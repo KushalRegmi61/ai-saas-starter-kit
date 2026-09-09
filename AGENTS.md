@@ -150,3 +150,12 @@ If documentation and implementation conflict, update docs in the same PR. Docume
 - Add tests with every change
 - Never bypass lint rules without explicit instruction
 - Ask before making destructive or irreversible changes
+
+## 12. CodeNib Context (MCP)
+
+- The `codenib` MCP server (configured in `opencode.json`) serves the prebuilt BM25 + symbol-graph + dense-vector index for this repo (typescript + python).
+- Use `explore_context` before editing unfamiliar code and `dependency_subgraph` for impact analysis instead of manual grep-hopping.
+- If `codenib codegraph status` reports a stale index, rebuild it before relying on its results.
+- Rebuild views separately: `codenib index <repo> --preset graph`, then `--preset semantic`. The `full` preset's zoekt view needs a fully committed tree, so it stays failed; `search_zoekt` is unavailable, `search_regex` covers that ground.
+- Dense embeddings run on CPU with MiniLM-L6-v2: `CUDA_VISIBLE_DEVICES="" codenib index <repo> --preset semantic --embedding-model sentence-transformers/all-MiniLM-L6-v2 --embedding-dimension 384`. The default CodeRankEmbed model OOMs this machine's GPU.
+- Keep the stub `tsconfig.json` and `packages/shared/tsconfig.json` files in place; the indexer creates them and deleting them marks the index stale.
