@@ -156,6 +156,7 @@ If documentation and implementation conflict, update docs in the same PR. Docume
 - The `codenib` MCP server (configured in `opencode.json`) serves the prebuilt BM25 + symbol-graph + dense-vector index for this repo (typescript + python).
 - Use `explore_context` before editing unfamiliar code and `dependency_subgraph` for impact analysis instead of manual grep-hopping.
 - If `codenib codegraph status` reports a stale index, rebuild it before relying on its results.
-- Rebuild views separately: `codenib index <repo> --preset graph`, then `--preset semantic`. The `full` preset's zoekt view needs a fully committed tree, so it stays failed; `search_zoekt` is unavailable, `search_regex` covers that ground.
-- Dense embeddings run on CPU with MiniLM-L6-v2: `CUDA_VISIBLE_DEVICES="" codenib index <repo> --preset semantic --embedding-model sentence-transformers/all-MiniLM-L6-v2 --embedding-dimension 384`. The default CodeRankEmbed model OOMs this machine's GPU.
+- The index only verifies against a fully committed tree: commit any change (code, docs, or config) and rebuild afterwards, or `explore_context` degrades to location-only results.
+- Rebuild with `codenib index <repo> --preset full --rebuild` plus the MiniLM flags below. `search_zoekt` is unavailable (`zoekt-git-index` binary not installed on this machine); `search_regex` covers that ground.
+- Dense embeddings run on CPU with MiniLM-L6-v2: prefix `CUDA_VISIBLE_DEVICES=""` and append `--embedding-model sentence-transformers/all-MiniLM-L6-v2 --embedding-dimension 384`. The default CodeRankEmbed model OOMs this machine's GPU.
 - Keep the stub `tsconfig.json` and `packages/shared/tsconfig.json` files in place; the indexer creates them and deleting them marks the index stale.
