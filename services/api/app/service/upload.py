@@ -1,5 +1,7 @@
 import re
 
+from shared.keys import has_path_traversal
+
 from app.config import settings
 from app.repo import (
     delete_file,
@@ -8,7 +10,6 @@ from app.repo import (
     get_presigned_upload_url,
     invalidate_list_cache,
 )
-from app.service.keys import has_path_traversal
 from app.types import FileUploadResponse, PresignedUpload
 from app.types.formatting import humanize_bytes
 

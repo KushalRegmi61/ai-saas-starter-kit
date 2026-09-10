@@ -4,6 +4,9 @@
 # change. Bump these deliberately (and re-run the test suite) rather than letting
 # them float. The genblaze-* trio must stay on the same 0.3.x line
 # (genblaze-nvidia requires genblaze-core within that range).
+# Local workspace dependency: shared pure-Python primitives (services/shared).
+# Editable path pin keeps the API running against the workspace checkout.
+-e ../shared
 fastapi==0.139.2
 uvicorn[standard]==0.51.0
 python-multipart==0.0.32

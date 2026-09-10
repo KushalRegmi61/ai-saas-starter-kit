@@ -87,7 +87,11 @@ pnpm lint              # frontend lint (eslint)
 pnpm build             # frontend type check + build
 pnpm test:web          # frontend unit tests (vitest)
 pnpm lint:api          # backend lint (ruff)
+pnpm lint:shared        # shared package lint (ruff)
+pnpm lint:worker        # worker lint (ruff)
 pnpm test:api          # backend tests (pytest)
+pnpm test:shared       # shared package tests (pytest)
+pnpm test:worker       # worker tests (pytest)
 pnpm check:structure   # structural boundary tests
 pnpm test:e2e          # Playwright e2e tests (local / pre-release only — see below)
 ```

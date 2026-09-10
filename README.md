@@ -151,6 +151,18 @@ pip install -r requirements.txt
 cd ../..
 ```
 
+The API requirements include the workspace-shared `ai-saas-shared` package
+(`services/shared`) as an editable install — no extra step needed.
+
+**2b. Set up the worker (optional)**
+
+```bash
+cd services/worker
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt && pip install -e .
+cd ../..
+```
+
 **3. Add your B2 credentials**
 
 Set up your local `.env`:

@@ -3,7 +3,7 @@
 Both the file-browser service (key-addressed reads/deletes) and the upload service
 (finalize ownership check) must reject path-traversal in a client-supplied B2 key.
 Keeping the pattern in one place (AGENTS.md §4 — no duplicated constants) means the
-two guards can never drift apart.
+guards can never drift apart.
 """
 
 import re

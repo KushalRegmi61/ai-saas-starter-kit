@@ -2,6 +2,8 @@ import logging
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
+from shared.keys import has_path_traversal
+
 from app.config import settings
 from app.repo import (
     delete_file,
@@ -11,7 +13,6 @@ from app.repo import (
     increment_download_count,
     list_files,
 )
-from app.service.keys import has_path_traversal
 from app.types import FileMetadata, UploadStats
 from app.types.formatting import humanize_bytes
 from app.types.stats import DailyUploadCount

@@ -19,6 +19,12 @@
   - Health check endpoint with B2 connectivity verification
   - Structured JSON logging with request tracing
   - Prometheus-format metrics endpoint
+  - Depends on `ai-saas-shared` (editable workspace install) for key validation
+- **services/shared/** — Shared pure-Python primitives (`ai-saas-shared`, zero third-party deps)
+  - Object-key validation (`shared.keys.has_path_traversal`) used by the API and the worker
+  - Consumed by `services/api/` and `services/worker/` as workspace dependencies
+- **services/worker/** — Minimal background-worker CLI (`ai-saas-worker`)
+  - `validate-key` (traversal guard) and `health` commands; second consumer of `ai-saas-shared`
 - **packages/shared/** — TypeScript type definitions
   - Mirrors Pydantic models from the API
   - Consumed by `apps/web/` as workspace dependency
@@ -129,6 +135,8 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 - Shared Supabase HTTP pool: `services/api/app/repo/http_client.py` — one process-wide `httpx.AsyncClient` reused by all Supabase adapters, opened/closed in `main.lifespan`
 - Config (pydantic-settings): `services/api/app/config/settings.py`
 - Structural tests: `services/api/tests/test_structure.py`
+- Shared key validation: `services/shared/src/shared/keys.py` (consumed by API + worker)
+- Worker CLI: `services/worker/src/worker/main.py`
 - Frontend API client: `apps/web/src/lib/api-client.ts`
 - Shared TypeScript types: `packages/shared/src/types.ts`
 
