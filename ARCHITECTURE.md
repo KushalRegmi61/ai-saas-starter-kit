@@ -23,9 +23,9 @@
 - **services/shared/** — Shared pure-Python primitives (`ai-saas-shared`, zero third-party deps)
   - Object-key validation (`shared.keys.has_path_traversal`) used by the API and the worker
   - Consumed by `services/api/` and `services/worker/` as workspace dependencies
-- **services/rag/** — Shared RAG package (`ai-saas-rag`, retrieval now + direct-ingestion stub)
+- **services/rag/** — Shared RAG package (`ai-saas-rag`, retrieval + direct ingestion)
   - Single tool `rag.retrieval.search_rag()` (Qdrant vectors + Neon registry/cache, RBAC + cache internal)
-  - `retrieval/` replaces `service/` as the domain layer; `ingestion/` reserved for Phase 2
+  - `retrieval/` replaces `service/` as the domain layer; `ingestion/` holds direct single-document indexing (`index_document`, auto-called from `finalize_upload`; no S3/Lambda/jobs)
   - Consumed by `services/api/` as a workspace dependency (`-e ../rag`)
 - **services/worker/** — Minimal background-worker CLI (`ai-saas-worker`)
   - `validate-key` (traversal guard) and `health` commands; second consumer of `ai-saas-shared`
