@@ -36,21 +36,15 @@ def _stored(key: str, *, content_type: str = "application/pdf") -> FileMetadata:
 def rag_configured(monkeypatch):
     """Pretend Qdrant + the RAG registry are configured."""
     monkeypatch.setattr(upload_service.settings, "qdrant_url", "http://qdrant:6333")
-    monkeypatch.setattr(
-        upload_service.settings, "rag_database_url", "postgresql://rag"
-    )
+    monkeypatch.setattr(upload_service.settings, "rag_database_url", "postgresql://rag")
 
 
 @pytest.fixture
 def stored_pdf(monkeypatch):
     """A finalized PDF object: valid metadata + matching magic bytes."""
     key = f"uploads/{TEST_USER_ID}/report.pdf"
-    monkeypatch.setattr(
-        upload_service, "get_file_metadata", lambda k: _stored(k)
-    )
-    monkeypatch.setattr(
-        upload_service, "get_object_head_bytes", lambda k, **kw: b"%PDF-1.7\n..."
-    )
+    monkeypatch.setattr(upload_service, "get_file_metadata", lambda k: _stored(k))
+    monkeypatch.setattr(upload_service, "get_object_head_bytes", lambda k, **kw: b"%PDF-1.7\n...")
     return key
 
 
@@ -61,9 +55,7 @@ def _mock_b2_bytes(monkeypatch, payload: bytes = b"%PDF-1.7\n..."):
 # --- finalize_upload auto-index ------------------------------------------------
 
 
-def test_finalize_pdf_indexes_and_reports_true(
-    monkeypatch, rag_configured, stored_pdf
-):
+def test_finalize_pdf_indexes_and_reports_true(monkeypatch, rag_configured, stored_pdf):
     _mock_b2_bytes(monkeypatch)
     seen: dict = {}
 
@@ -108,9 +100,7 @@ def test_finalize_png_skips_index(monkeypatch, rag_configured):
     assert called == []
 
 
-def test_finalize_index_failure_still_succeeds(
-    monkeypatch, rag_configured, stored_pdf
-):
+def test_finalize_index_failure_still_succeeds(monkeypatch, rag_configured, stored_pdf):
     _mock_b2_bytes(monkeypatch)
 
     def boom(*a, **kw):
@@ -124,9 +114,7 @@ def test_finalize_index_failure_still_succeeds(
     assert result.rag_indexed is False
 
 
-def test_finalize_index_value_error_still_succeeds(
-    monkeypatch, rag_configured, stored_pdf
-):
+def test_finalize_index_value_error_still_succeeds(monkeypatch, rag_configured, stored_pdf):
     _mock_b2_bytes(monkeypatch)
 
     def boom(*a, **kw):
@@ -202,12 +190,8 @@ async def test_complete_endpoint_index_failure_still_200(
 
 
 @pytest.mark.asyncio
-async def test_complete_endpoint_rejects_unknown_department(
-    auth_client, stored_pdf
-):
-    resp = await auth_client.post(
-        "/upload/complete", json={"key": stored_pdf, "department": "foo"}
-    )
+async def test_complete_endpoint_rejects_unknown_department(auth_client, stored_pdf):
+    resp = await auth_client.post("/upload/complete", json={"key": stored_pdf, "department": "foo"})
     assert resp.status_code == 400
 
 
@@ -216,9 +200,7 @@ async def test_complete_endpoint_rejects_unknown_department(
 
 def test_remove_file_purges_indexed_source(monkeypatch):
     monkeypatch.setattr(files_service.settings, "qdrant_url", "http://qdrant:6333")
-    monkeypatch.setattr(
-        files_service.settings, "rag_database_url", "postgresql://rag"
-    )
+    monkeypatch.setattr(files_service.settings, "rag_database_url", "postgresql://rag")
     deleted: list[str] = []
     monkeypatch.setattr(files_service, "delete_file", lambda k: deleted.append(k))
     purged: list[str] = []
@@ -232,9 +214,7 @@ def test_remove_file_purges_indexed_source(monkeypatch):
 
 def test_remove_file_purge_failure_still_deletes(monkeypatch):
     monkeypatch.setattr(files_service.settings, "qdrant_url", "http://qdrant:6333")
-    monkeypatch.setattr(
-        files_service.settings, "rag_database_url", "postgresql://rag"
-    )
+    monkeypatch.setattr(files_service.settings, "rag_database_url", "postgresql://rag")
     monkeypatch.setattr(files_service, "delete_file", lambda k: None)
 
     def boom(source):

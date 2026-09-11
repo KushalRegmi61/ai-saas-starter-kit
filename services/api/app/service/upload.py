@@ -92,11 +92,7 @@ def sanitize_filename(filename: str) -> str:
         base, sep, ext = name.rpartition(".")
         # Keep a fitting extension, else hard-truncate. Guard on `sep` (not
         # `ext`): rpartition returns ("", "", name) with no dot.
-        name = (
-            base[: 200 - len(ext) - 1] + "." + ext
-            if sep and len(ext) < 200
-            else name[:200]
-        )
+        name = base[: 200 - len(ext) - 1] + "." + ext if sep and len(ext) < 200 else name[:200]
     return name or "unnamed"
 
 
@@ -257,17 +253,13 @@ def finalize_upload(
 
     if metadata.content_type not in ALLOWED_TYPES:
         delete_file(key)
-        raise UploadError(
-            f"File type '{metadata.content_type}' not allowed", status_code=415
-        )
+        raise UploadError(f"File type '{metadata.content_type}' not allowed", status_code=415)
 
     header = get_object_head_bytes(key)
     if not matches_content_signature(header, metadata.content_type):
         # Stored bytes lied about their type — drop the object, then reject.
         delete_file(key)
-        raise UploadError(
-            "File contents do not match the declared type", status_code=415
-        )
+        raise UploadError("File contents do not match the declared type", status_code=415)
 
     # Browser wrote straight to B2, bypassing the listing cache — invalidate it
     # so the new file shows up immediately instead of after the ~30s TTL.
