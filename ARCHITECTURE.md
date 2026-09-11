@@ -23,6 +23,10 @@
 - **services/shared/** — Shared pure-Python primitives (`ai-saas-shared`, zero third-party deps)
   - Object-key validation (`shared.keys.has_path_traversal`) used by the API and the worker
   - Consumed by `services/api/` and `services/worker/` as workspace dependencies
+- **services/rag/** — Shared RAG package (`ai-saas-rag`, retrieval now + direct-ingestion stub)
+  - Single tool `rag.retrieval.search_rag()` (Qdrant vectors + Neon registry/cache, RBAC + cache internal)
+  - `retrieval/` replaces `service/` as the domain layer; `ingestion/` reserved for Phase 2
+  - Consumed by `services/api/` as a workspace dependency (`-e ../rag`)
 - **services/worker/** — Minimal background-worker CLI (`ai-saas-worker`)
   - `validate-key` (traversal guard) and `health` commands; second consumer of `ai-saas-shared`
 - **packages/shared/** — TypeScript type definitions
@@ -115,6 +119,8 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 - **Billing**: Browser -> `POST /billing/checkout` -> Stripe Checkout (redirect) -> Stripe -> `POST /billing/webhook` (signature-verified) -> `service/billing.py` upserts the subscription into Supabase (service role). `require_plan(min_tier)` reads the derived entitlements and 402s below the required tier.
 - **Upload** (direct browser→B2): Browser -> `POST /upload/presign` -> API validates the intent + signs a type-bound PUT URL -> Browser `PUT`s the bytes straight to B2 -> Browser -> `POST /upload/complete` -> API confirms existence, true size, and magic-byte signature (deleting a spoofed object) -> response. Bytes never transit the API, so uploads aren't bounded by a serverless request-body cap.
 - **List**: Browser -> `GET /files` -> service calls repo -> returns file list
+- **Retrieval**: Client -> `POST /retrieval/search` (enterprise JWT) -> `runtime/retrieval.py` -> `service/retrieval.py` -> `rag.retrieval.search_rag()` (router → Qdrant + BM25 → RRF → rerank → Neon cache)
+- **Ingestion**: `POST /upload/complete` -> `finalize_upload` -> best-effort `rag.ingestion.index_document()` (load → chunk → embed → Qdrant + Neon registry); delete purges via `rag.delete_indexed_source()`. Indexing never fails the upload (`rag_indexed=false`).
 - **Download**: Browser -> `GET /files-by-key/download?key=...` -> service validates + ownership-scopes the key -> repo generates presigned URL -> browser downloads
 - **Delete**: Browser -> `DELETE /files-by-key?key=...` -> service validates + ownership-scopes the key -> repo deletes from B2
 
