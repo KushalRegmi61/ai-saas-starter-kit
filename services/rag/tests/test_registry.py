@@ -51,6 +51,13 @@ def test_ensure_tables_includes_file_mtime():
     assert any("file_mtime" in s for s in statements)
 
 
+def test_ensure_tables_enables_pgvector_first():
+    conn = _mock_conn()
+    ensure_tables(conn)
+    statements = [c.args[0] for c in conn.execute.call_args_list]
+    assert statements[0] == "CREATE EXTENSION IF NOT EXISTS vector"
+
+
 def test_flush_cache_deletes_from_cache_table():
     conn = _mock_conn()
     flush_cache(conn)

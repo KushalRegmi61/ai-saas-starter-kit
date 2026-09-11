@@ -60,6 +60,9 @@ def _now() -> datetime:
 def ensure_tables(connection) -> None:
     from rag.retrieval.query_cache import ensure_cache_table
 
+    # pgvector backs query_cache.question_vec + its HNSW index. Self-provision
+    # so a fresh database works without manual setup; no-op when installed.
+    connection.execute("CREATE EXTENSION IF NOT EXISTS vector")
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS documents (
