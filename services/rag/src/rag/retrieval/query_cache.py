@@ -1,0 +1,142 @@
+"""Two-tier answer cache, ported from enterprise app/cache/query_cache.py.
+
+Key = SHA-256(question + context_hash); Tier-1 exact, Tier-2 semantic (>=0.92,
+same context_hash). Backend is Neon Postgres (+pgvector); SQL shape unchanged.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from datetime import UTC, datetime, timedelta
+
+SEMANTIC_THRESHOLD = 0.92
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _hash(text: str) -> str:
+    return hashlib.sha256(text.strip().lower().encode()).hexdigest()
+
+
+def context_hash(chunk_ids: list[str]) -> str:
+    key = "|".join(sorted(chunk_ids))
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+def make_cache_key(question: str, ctx_hash: str) -> str:
+    return _hash(f"{question.strip()}|CTX:{ctx_hash}")
+
+
+def ensure_cache_table(connection, dims: int) -> None:
+    connection.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS query_cache (
+            question_hash  TEXT PRIMARY KEY,
+            question_text  TEXT NOT NULL,
+            context_hash   TEXT,
+            question_vec   VECTOR({dims}),
+            answer_json    TEXT NOT NULL,
+            search_mode    TEXT,
+            created_at     TIMESTAMPTZ DEFAULT NOW(),
+            expires_at     TIMESTAMPTZ,
+            hit_count      INTEGER DEFAULT 0
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS query_cache_vec_idx
+        ON query_cache
+        USING hnsw (question_vec vector_cosine_ops)
+        """
+    )
+
+
+def get_cached_answer(
+    connection, question: str, embedding: list[float], ctx_hash: str
+) -> dict | None:
+    question_hash = make_cache_key(question, ctx_hash)
+    row = connection.execute(
+        "SELECT answer_json, expires_at FROM query_cache WHERE question_hash = %s",
+        (question_hash,),
+    ).fetchone()
+    if row:
+        answer_json, expires_at = row
+        if expires_at is None or expires_at > _now():
+            connection.execute(
+                "UPDATE query_cache SET hit_count = hit_count + 1 WHERE question_hash = %s",
+                (question_hash,),
+            )
+            return json.loads(answer_json)
+
+    vec_str = "[" + ",".join(str(v) for v in embedding) + "]"
+    row = connection.execute(
+        """
+        SELECT question_hash, answer_json, expires_at,
+               1 - (question_vec <=> %s::vector) AS similarity
+        FROM query_cache
+        WHERE (expires_at IS NULL OR expires_at > NOW())
+          AND context_hash = %s
+        ORDER BY question_vec <=> %s::vector
+        LIMIT 1
+        """,
+        (vec_str, ctx_hash, vec_str),
+    ).fetchone()
+    if row:
+        cached_hash, answer_json, _expires_at, similarity = row
+        if similarity >= SEMANTIC_THRESHOLD:
+            connection.execute(
+                "UPDATE query_cache SET hit_count = hit_count + 1 WHERE question_hash = %s",
+                (cached_hash,),
+            )
+            return json.loads(answer_json)
+    return None
+
+
+def store_cached_answer(
+    connection,
+    question: str,
+    embedding: list[float],
+    answer: dict,
+    search_mode: str,
+    ctx_hash: str,
+    ttl_hours: int = 24,
+) -> None:
+    question_hash = make_cache_key(question, ctx_hash)
+    vec_str = "[" + ",".join(str(v) for v in embedding) + "]"
+    expires_at = _now() + timedelta(hours=ttl_hours)
+    connection.execute(
+        """
+        INSERT INTO query_cache
+            (question_hash, question_text, context_hash, question_vec, answer_json, search_mode, expires_at)
+        VALUES (%s, %s, %s, %s::vector, %s, %s, %s)
+        ON CONFLICT (question_hash) DO UPDATE SET
+            answer_json  = EXCLUDED.answer_json,
+            search_mode  = EXCLUDED.search_mode,
+            expires_at   = EXCLUDED.expires_at,
+            hit_count    = query_cache.hit_count + 1
+        """,
+        (
+            question_hash,
+            question.strip(),
+            ctx_hash,
+            vec_str,
+            json.dumps(answer),
+            search_mode,
+            expires_at,
+        ),
+    )
+
+
+def flush_cache(connection, expired_only: bool = False) -> int:
+    """Delete cache entries. Returns count of rows deleted."""
+    if expired_only:
+        result = connection.execute(
+            "DELETE FROM query_cache WHERE expires_at IS NOT NULL AND expires_at <= NOW()"
+        )
+    else:
+        result = connection.execute("DELETE FROM query_cache")
+    return result.rowcount
