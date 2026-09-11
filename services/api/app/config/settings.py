@@ -153,6 +153,19 @@ class Settings(BaseSettings):
     # then sends `Authorization: Bearer <token>`.
     metrics_token: str = ""
 
+    # RAG retrieval (Qdrant vectors + Neon registry/cache). Optional to boot:
+    # /retrieval/search returns 503 when Qdrant/Neon/OpenAI are unconfigured.
+    # JWT below is the enterprise RAG issuer (temporary adapter in repo/rag_auth.py
+    # until services/auth ships as its own package).
+    qdrant_url: str = ""
+    qdrant_api_key: str = ""
+    qdrant_collection: str = "chunks"
+    rag_database_url: str = ""
+    rag_jwt_secret: str = ""
+    rag_jwt_algorithm: str = "HS256"
+    rag_rate_limit_requests: int = 60
+    rag_rate_limit_window_seconds: int = 60
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     @property

@@ -28,6 +28,7 @@ from app.runtime import (  # noqa: E402
     health,
     metrics,
     ratelimit,
+    retrieval,
     upload,
 )
 from app.runtime.bodylimit import BodySizeLimitMiddleware  # noqa: E402
@@ -231,3 +232,4 @@ app.include_router(files.router, tags=["files"])
 app.include_router(generation.router)
 app.include_router(admin.router)
 app.include_router(metrics.router, tags=["metrics"])
+app.include_router(retrieval.router, tags=["retrieval"])
