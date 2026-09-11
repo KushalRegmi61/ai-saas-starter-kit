@@ -203,6 +203,26 @@ def get_presigned_upload_url(
         raise RuntimeError(f"B2 presign(put) failed for '{key}': {e}") from e
 
 
+def get_object_bytes(key: str) -> bytes:
+    """Fetch the full bytes of an object.
+
+    Used by RAG auto-indexing during upload finalization: with direct
+    browser→B2 uploads the API never sees the payload, so it re-reads the
+    object from B2 to hand the bytes to the indexer. Raises RuntimeError on
+    S3 failure; the caller checks existence separately via
+    ``get_file_metadata``.
+    """
+    client = get_s3_client()
+    try:
+        response = client.get_object(
+            Bucket=settings.b2_bucket_name,
+            Key=key,
+        )
+        return response["Body"].read()
+    except ClientError as e:
+        raise RuntimeError(f"B2 get failed for '{key}': {e}") from e
+
+
 def get_object_head_bytes(key: str, length: int = 32) -> bytes:
     """Fetch the first ``length`` bytes of an object via a Range GET.
 

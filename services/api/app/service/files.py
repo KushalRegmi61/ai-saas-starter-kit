@@ -157,6 +157,16 @@ def remove_file(user_id: str, key: str) -> None:
     """Own the key, then delete the file. Raises RuntimeError on B2 failure."""
     _require_owned(user_id, key)
     delete_file(key)
+    # Best-effort RAG purge: the B2 delete already succeeded, so an unconfigured
+    # or failing RAG must never fail the request — skip quietly or log and move on.
+    if not (settings.qdrant_url and settings.rag_database_url):
+        return
+    try:
+        from rag import delete_indexed_source
+
+        delete_indexed_source(key)
+    except Exception:
+        logger.exception("RAG purge failed: key=%s", key)
 
 
 def get_upload_activity(user_id: str, days: int = 7) -> list[DailyUploadCount]:

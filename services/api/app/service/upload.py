@@ -1,3 +1,4 @@
+import logging
 import re
 
 from shared.keys import has_path_traversal
@@ -6,6 +7,7 @@ from app.config import settings
 from app.repo import (
     delete_file,
     get_file_metadata,
+    get_object_bytes,
     get_object_head_bytes,
     get_presigned_upload_url,
     invalidate_list_cache,
@@ -13,9 +15,10 @@ from app.repo import (
 from app.types import FileUploadResponse, PresignedUpload
 from app.types.formatting import humanize_bytes
 
-# Note: image/svg+xml is deliberately excluded. SVGs can embed <script>, so a
-# file stored and later served from a public bucket URL would execute in the
-# browser (stored XSS). Re-add only with server-side SVG sanitization.
+logger = logging.getLogger(__name__)
+
+# image/svg+xml is excluded: embedded <script> would run as stored XSS.
+# Re-add only with server-side SVG sanitization.
 ALLOWED_TYPES = {
     "image/jpeg",
     "image/png",
@@ -47,17 +50,10 @@ MIME_EXTENSION_MAP: dict[str, set[str]] = {
 }
 
 
-# Magic-byte signatures for the binary types we accept. The client-declared
-# content_type is untrusted, so we sniff the leading bytes and reject obvious
-# mismatches (e.g. an HTML/script payload uploaded as image/png). Text-like
-# types (text/plain, text/csv, application/json) have no reliable signature and
-# are intentionally omitted — they skip this check but remain constrained by
-# the extension/type consistency check.
+# Magic-byte signatures for binary types (declared content_type is untrusted).
+# Text-like types have no reliable signature and skip this check.
 def matches_content_signature(data: bytes, content_type: str) -> bool:
-    """Return True if `data`'s leading bytes are consistent with `content_type`.
-
-    Types without a known signature return True (nothing to verify).
-    """
+    """Leading bytes consistent with `content_type`; unknown types pass."""
     if content_type == "image/jpeg":
         return data[:3] == b"\xff\xd8\xff"
     if content_type == "image/png":
@@ -94,10 +90,8 @@ def sanitize_filename(filename: str) -> str:
     name = name.lstrip(".").strip()
     if len(name) > 200:
         base, sep, ext = name.rpartition(".")
-        # Preserve the extension only when there is one that still fits;
-        # otherwise (no dot, or an absurdly long "extension") hard-truncate.
-        # `rpartition` returns ("", "", name) when there is no dot, so guard on
-        # `sep`, not `ext` — else an extensionless name keeps its whole body.
+        # Keep a fitting extension, else hard-truncate. Guard on `sep` (not
+        # `ext`): rpartition returns ("", "", name) with no dot.
         name = (
             base[: 200 - len(ext) - 1] + "." + ext
             if sep and len(ext) < 200
@@ -126,14 +120,50 @@ class UploadError(Exception):
         super().__init__(detail)
 
 
-def upload_key_for(user_id: str, safe_name: str) -> str:
-    """The B2 object key a user's upload lands under.
+# Declared RAG metadata allow-lists; unknown values are rejected (400).
+VALID_DEPARTMENTS = {"hr", "security", "product", "finance", "general"}
+VALID_ACCESS_LEVELS = {"public", "internal", "confidential", "restricted"}
 
-    Scoped to the caller (``uploads/{user_id}/``) so one user's uploads never
-    collide with or shadow another's, matching the file browser's per-user
-    scoping. B2 buckets are always versioned, so re-uploading the same name just
-    creates a new version — no duplicate rejection needed.
-    """
+# Types eligible for RAG auto-indexing; others finalize with rag_indexed=False.
+RAG_INDEXABLE_TYPES: dict[str, set[str]] = {
+    "application/pdf": {".pdf"},
+    "text/plain": {".txt", ".md", ".log", ".text"},
+}
+
+
+def _maybe_index_in_rag(
+    key: str,
+    filename: str,
+    content_type: str,
+    department: str | None,
+    access_level: str | None,
+) -> bool:
+    """Best-effort RAG auto-index of a finalized upload; never raises."""
+    if content_type not in RAG_INDEXABLE_TYPES:
+        return False
+    if not (settings.qdrant_url and settings.rag_database_url):
+        return False
+    try:
+        content = get_object_bytes(key)
+        from rag import index_document
+
+        index_document(
+            content,
+            filename,
+            source=key,
+            department=department,
+            access_level=access_level,
+        )
+        return True
+    except ValueError:
+        return False
+    except Exception:
+        logger.exception("RAG auto-index failed: key=%s", key)
+        return False
+
+
+def upload_key_for(user_id: str, safe_name: str) -> str:
+    """B2 key for a user's upload: ``uploads/{user_id}/{safe_name}``."""
     return f"uploads/{user_id}/{safe_name}"
 
 
@@ -144,15 +174,10 @@ def prepare_upload(
     *,
     user_id: str,
 ) -> PresignedUpload:
-    """Validate an upload intent and mint a scoped, type-bound presigned PUT URL.
+    """Validate an upload intent and mint a scoped, type-bound presigned PUT.
 
-    The browser then uploads the bytes **straight to B2** with this URL, so the
-    payload never transits the API — that's what sidesteps a serverless
-    request-body cap (Vercel's 4.5 MB). Everything checkable without the bytes is
-    enforced here (type allow-list, extension/type consistency, declared size);
-    the magic-byte signature and true stored size are re-checked in
-    :func:`finalize_upload` once the object exists. Raises UploadError on
-    failure.
+    Bytes go browser→B2 directly (never through the API); size and signature
+    are re-checked in :func:`finalize_upload`. Raises UploadError on failure.
     """
     if not filename:
         raise UploadError("No filename provided")
@@ -187,45 +212,33 @@ def prepare_upload(
 
 
 def _require_owned_upload(user_id: str, key: str) -> None:
-    """Reject an empty/traversing key, or one outside the caller's upload prefix.
-
-    Finalize only ever confirms objects the app itself wrote under
-    ``uploads/{user_id}/`` (generated media is created server-side, never
-    finalized by a client), so this is a single-prefix ownership gate.
-    """
+    """Reject empty/traversing keys and keys outside the caller's prefix."""
     if not key or has_path_traversal(key):
         raise UploadError("Invalid file key")
     if not key.startswith(upload_key_for(user_id, "")):
-        # 403 here, unlike the 404 that file reads/deletes use for a cross-tenant
-        # key (service/files._require_owned): those 404 to avoid confirming another
-        # user's object exists, but this check runs BEFORE any B2 call and fires
-        # regardless of existence, so it leaks nothing — a 403 reads truer for a
-        # client trying to finalize a key it doesn't own.
+        # 403 (not 404): this runs before any B2 call, so it leaks nothing
+        # about other users' objects.
         raise UploadError("Invalid file key", status_code=403)
 
 
-def finalize_upload(key: str, *, user_id: str) -> FileUploadResponse:
-    """Confirm a direct upload landed and passes the checks the sign step couldn't.
+def finalize_upload(
+    key: str,
+    *,
+    user_id: str,
+    department: str | None = None,
+    access_level: str | None = None,
+) -> FileUploadResponse:
+    """Confirm a direct upload landed and re-check size, type, and signature.
 
-    Called after the browser's PUT to B2 succeeds. Re-establishes — *for objects
-    the client finalizes* — the guarantees the in-transit path used to provide,
-    now that the bytes only ever lived in B2. NOTE: these checks are only enforced
-    on the finalized path. An object PUT to the presigned URL but never finalized
-    lands under ``uploads/{user_id}/`` and is listed/served without the true-size
-    or signature check; closing that (a staging prefix or a lifecycle sweep of
-    stale unconfirmed objects) is tracked tech-debt, not done here. The checks:
-
-    * **Ownership** — the key must be under the caller's own ``uploads/`` prefix,
-      so a client can't finalize (and thereby surface) an object it doesn't own.
-    * **Existence** — a missing object means the PUT never completed (404).
-    * **True size** — re-check the stored size against the limit, in case the
-      client under-declared it at sign time.
-    * **Content signature** — Range-GET the header bytes and reject a payload
-      whose magic bytes don't match its declared type, deleting the bad object.
-
-    Raises UploadError on any failure.
+    Unconfirmed objects skip these checks (tracked tech-debt). Validates the
+    declared RAG metadata, then best-effort auto-indexes. Raises UploadError.
     """
     _require_owned_upload(user_id, key)
+
+    if department is not None and department not in VALID_DEPARTMENTS:
+        raise UploadError(f"Unknown department '{department}'")
+    if access_level is not None and access_level not in VALID_ACCESS_LEVELS:
+        raise UploadError(f"Unknown access level '{access_level}'")
 
     metadata = get_file_metadata(key)
     if metadata is None:
@@ -250,18 +263,23 @@ def finalize_upload(key: str, *, user_id: str) -> FileUploadResponse:
 
     header = get_object_head_bytes(key)
     if not matches_content_signature(header, metadata.content_type):
-        # The stored bytes lied about their type — drop the object so a spoofed
-        # payload never lingers in the bucket, then reject.
+        # Stored bytes lied about their type — drop the object, then reject.
         delete_file(key)
         raise UploadError(
             "File contents do not match the declared type", status_code=415
         )
 
-    # The object was written straight to B2 by the browser, so the listing cache
-    # (which the file browser + stats read) never saw the mutation. Invalidate it
-    # here — as the old through-API put_object path did — so the new file shows up
-    # immediately instead of after the ~30s cache TTL.
+    # Browser wrote straight to B2, bypassing the listing cache — invalidate it
+    # so the new file shows up immediately instead of after the ~30s TTL.
     invalidate_list_cache()
+
+    rag_indexed = _maybe_index_in_rag(
+        metadata.key,
+        metadata.filename,
+        metadata.content_type,
+        department,
+        access_level,
+    )
 
     return FileUploadResponse(
         key=metadata.key,
@@ -271,4 +289,5 @@ def finalize_upload(key: str, *, user_id: str) -> FileUploadResponse:
         content_type=metadata.content_type,
         uploaded_at=metadata.uploaded_at,
         url=metadata.url,
+        rag_indexed=rag_indexed,
     )
