@@ -123,7 +123,7 @@ VALID_ACCESS_LEVELS = {"public", "internal", "confidential", "restricted"}
 # Types eligible for RAG auto-indexing; others finalize with rag_indexed=False.
 RAG_INDEXABLE_TYPES: dict[str, set[str]] = {
     "application/pdf": {".pdf"},
-    "text/plain": {".txt", ".md", ".log", ".text"},
+    "text/plain": {".txt", ".md"},
 }
 
 
