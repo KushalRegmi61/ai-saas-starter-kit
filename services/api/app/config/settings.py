@@ -160,12 +160,12 @@ class Settings(BaseSettings):
     qdrant_url: str = ""
     qdrant_api_key: str = ""
     qdrant_collection: str = "chunks"
-    rag_database_url: str = ""
-    rag_jwt_secret: str = ""
-    rag_jwt_algorithm: str = "HS256"
-    rag_rate_limit_requests: int = 60
-    rag_rate_limit_window_seconds: int = 60
-    rag_tenant: str = "api"
+    agentic_assistant_database_url: str = ""
+    agentic_assistant_jwt_secret: str = ""
+    agentic_assistant_jwt_algorithm: str = "HS256"
+    agentic_assistant_rate_limit_requests: int = 60
+    agentic_assistant_rate_limit_window_seconds: int = 60
+    agentic_assistant_tenant: str = "api"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

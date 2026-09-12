@@ -159,12 +159,12 @@ def remove_file(user_id: str, key: str) -> None:
     delete_file(key)
     # Best-effort RAG purge: the B2 delete already succeeded, so an unconfigured
     # or failing RAG must never fail the request — skip quietly or log and move on.
-    if not (settings.qdrant_url and settings.rag_database_url):
+    if not (settings.qdrant_url and settings.agentic_assistant_database_url):
         return
     try:
         from rag import delete_indexed_source
 
-        delete_indexed_source(key, tenant=settings.rag_tenant)
+        delete_indexed_source(key, tenant=settings.agentic_assistant_tenant)
     except Exception:
         logger.exception("RAG purge failed: key=%s", key)
 

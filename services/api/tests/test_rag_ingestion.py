@@ -36,7 +36,7 @@ def _stored(key: str, *, content_type: str = "application/pdf") -> FileMetadata:
 def rag_configured(monkeypatch):
     """Pretend Qdrant + the RAG registry are configured."""
     monkeypatch.setattr(upload_service.settings, "qdrant_url", "http://qdrant:6333")
-    monkeypatch.setattr(upload_service.settings, "rag_database_url", "postgresql://rag")
+    monkeypatch.setattr(upload_service.settings, "agentic_assistant_database_url", "postgresql://rag")
 
 
 @pytest.fixture
@@ -130,7 +130,7 @@ def test_finalize_index_value_error_still_succeeds(monkeypatch, rag_configured, 
 
 def test_finalize_unconfigured_rag_skips_index(monkeypatch, stored_pdf):
     monkeypatch.setattr(upload_service.settings, "qdrant_url", "")
-    monkeypatch.setattr(upload_service.settings, "rag_database_url", "")
+    monkeypatch.setattr(upload_service.settings, "agentic_assistant_database_url", "")
     called: list = []
     monkeypatch.setattr(rag, "index_document", lambda *a, **kw: called.append(a))
 
@@ -201,7 +201,7 @@ async def test_complete_endpoint_rejects_unknown_department(auth_client, stored_
 
 def test_remove_file_purges_indexed_source(monkeypatch):
     monkeypatch.setattr(files_service.settings, "qdrant_url", "http://qdrant:6333")
-    monkeypatch.setattr(files_service.settings, "rag_database_url", "postgresql://rag")
+    monkeypatch.setattr(files_service.settings, "agentic_assistant_database_url", "postgresql://rag")
     deleted: list[str] = []
     monkeypatch.setattr(files_service, "delete_file", lambda k: deleted.append(k))
     purged: list[str] = []
@@ -220,7 +220,7 @@ def test_remove_file_purges_indexed_source(monkeypatch):
 
 def test_remove_file_purge_failure_still_deletes(monkeypatch):
     monkeypatch.setattr(files_service.settings, "qdrant_url", "http://qdrant:6333")
-    monkeypatch.setattr(files_service.settings, "rag_database_url", "postgresql://rag")
+    monkeypatch.setattr(files_service.settings, "agentic_assistant_database_url", "postgresql://rag")
     monkeypatch.setattr(files_service, "delete_file", lambda k: None)
 
     def boom(source, **kw):
@@ -234,7 +234,7 @@ def test_remove_file_purge_failure_still_deletes(monkeypatch):
 
 def test_remove_file_unconfigured_skips_purge(monkeypatch):
     monkeypatch.setattr(files_service.settings, "qdrant_url", "")
-    monkeypatch.setattr(files_service.settings, "rag_database_url", "")
+    monkeypatch.setattr(files_service.settings, "agentic_assistant_database_url", "")
     monkeypatch.setattr(files_service, "delete_file", lambda k: None)
     purged: list[str] = []
     monkeypatch.setattr(rag, "delete_indexed_source", lambda s, **kw: purged.append(s))

@@ -9,7 +9,7 @@ class RagSettings(BaseSettings):
     qdrant_url: str = ""
     qdrant_api_key: str = ""
     qdrant_collection: str = "chunks"
-    rag_database_url: str = ""
+    agentic_assistant_database_url: str = ""
     openai_api_key: str = ""
     openai_base_url: str = ""
     embedding_model: str = "text-embedding-3-small"

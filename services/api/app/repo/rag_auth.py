@@ -40,7 +40,7 @@ class RagTokenClaims:
 
 
 def decode_rag_token(token: str) -> RagTokenClaims:
-    payload = jwt.decode(token, settings.rag_jwt_secret, algorithms=[settings.rag_jwt_algorithm])
+    payload = jwt.decode(token, settings.agentic_assistant_jwt_secret, algorithms=[settings.agentic_assistant_jwt_algorithm])
     subject = payload.get("sub")
     domain = payload.get("domain")
     actions = payload.get("actions", [])
@@ -62,7 +62,7 @@ def claims_to_access_filter(claims: RagTokenClaims) -> AccessFilter:
     return AccessFilter(
         departments=departments,
         max_access_level=claims.max_access_level,
-        tenant=settings.rag_tenant,
+        tenant=settings.agentic_assistant_tenant,
     )
 
 
@@ -89,12 +89,12 @@ def require_rag_auth(
 
 
 def require_rag_rate_limit(claims: RagTokenClaims = Depends(require_rag_auth)) -> RagTokenClaims:
-    if not settings.rag_database_url:
+    if not settings.agentic_assistant_database_url:
         return claims
     from rag.repo import neon_repo
 
-    limit = settings.rag_rate_limit_requests
-    window_seconds = settings.rag_rate_limit_window_seconds
+    limit = settings.agentic_assistant_rate_limit_requests
+    window_seconds = settings.agentic_assistant_rate_limit_window_seconds
     now = int(time.time())
     window_key = math.floor(now / window_seconds) * window_seconds
     with neon_repo.get_conn() as conn:

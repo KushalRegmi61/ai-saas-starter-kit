@@ -33,9 +33,9 @@ def init_pool() -> None:
     except ImportError as exc:
         raise ImportError("psycopg-pool is required. Run: pip install psycopg-pool") from exc
     s = get_rag_settings()
-    if not s.rag_database_url:
-        raise ValueError("RAG_DATABASE_URL is missing. Set it before retrieval.")
-    _pool = ConnectionPool(conninfo=s.rag_database_url, min_size=2, max_size=10, open=True)
+    if not s.agentic_assistant_database_url:
+        raise ValueError("AGENTIC_ASSISTANT_DATABASE_URL is missing. Set it before retrieval.")
+    _pool = ConnectionPool(conninfo=s.agentic_assistant_database_url, min_size=2, max_size=10, open=True)
 
 
 def close_pool() -> None:

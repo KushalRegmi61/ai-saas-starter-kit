@@ -19,7 +19,7 @@ Caller passes `AccessFilter(departments, max_access_level)`; rag only enforces. 
 
 ## Configuration
 
-`QDRANT_URL/QDRANT_API_KEY/QDRANT_COLLECTION`, `RAG_DATABASE_URL` (Neon + pgvector), `OPENAI_API_KEY/BASE_URL`, `RAG_JWT_SECRET/ALGORITHM`, `RAG_RATE_LIMIT_*`. Unconfigured → `503`. Rate limit is a fixed-window counter in Neon; skipped when no DB URL (local dev).
+`QDRANT_URL/QDRANT_API_KEY/QDRANT_COLLECTION`, `AGENTIC_ASSISTANT_DATABASE_URL` (Neon + pgvector), `OPENAI_API_KEY/BASE_URL`, `AGENTIC_ASSISTANT_JWT_SECRET/ALGORITHM`, `AGENTIC_ASSISTANT_RATE_LIMIT_*`. Unconfigured → `503`. Rate limit is a fixed-window counter in Neon; skipped when no DB URL (local dev).
 
 ## Tests
 
@@ -28,7 +28,7 @@ Caller passes `AccessFilter(departments, max_access_level)`; rag only enforces. 
 ## Multi-service use (tenant + portable filter)
 
 - Tenant semantics: `tenant=None` normalizes to `"default"`. The tenant is stamped on the Qdrant payload, the Neon registry row, and the query-cache key; chunk/registry deletes scoped; delete-path cache flush is scoped per tenant (over-invalidation only within the tenant) and point IDs are tenant-qualified (`{tenant}:{source}:{chunk_index}:{text}` (→ sha256)).
-- Host recipe: each host resolves its own identity to an `AccessFilter` and passes `tenant` on index/delete calls. Reference implementation: `services/api/app/repo/rag_auth.py::claims_to_access_filter` (reads this host's `RAG_TENANT` for the tenant stamp).
+- Host recipe: each host resolves its own identity to an `AccessFilter` and passes `tenant` on index/delete calls. Reference implementation: `services/api/app/repo/rag_auth.py::claims_to_access_filter` (reads this host's `AGENTIC_ASSISTANT_TENANT` for the tenant stamp).
 - Non-goals: no required filter yet (a no-filter call still searches permissively), no per-call collection override, no external policy engine (Cedar/OPA) — the `attributes` field on `AccessFilter` is the seam for one later.
 - Dev-DB reset note: pre-tenant dev data (Qdrant points with old `_chunk_id` payloads lacking `tenant`, plus existing `documents`/`query_cache` rows) are orphans — reset the `chunks` collection and the `documents`/`query_cache` tables on legacy dev databases (no production data exists).
 

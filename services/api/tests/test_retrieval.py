@@ -13,7 +13,7 @@ def _rag_token(domain="hr", actions=None):
     actions = actions if actions is not None else ["read:public", "read:internal"]
     return jwt.encode(
         {"sub": "u-rag", "domain": domain, "actions": actions},
-        settings.rag_jwt_secret or "test-secret",
+        settings.agentic_assistant_jwt_secret or "test-secret",
         algorithm="HS256",
     )
 
@@ -26,7 +26,7 @@ async def test_retrieval_requires_bearer(client):
 
 @pytest.mark.asyncio
 async def test_retrieval_rejects_bad_signature(client, monkeypatch):
-    monkeypatch.setattr(settings, "rag_jwt_secret", "correct-secret")
+    monkeypatch.setattr(settings, "agentic_assistant_jwt_secret", "correct-secret")
     resp = await client.post(
         "/retrieval/search",
         json={"question": "pto?"},
@@ -40,9 +40,9 @@ async def test_retrieval_rejects_bad_signature(client, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_retrieval_503_when_unconfigured(client, monkeypatch):
-    monkeypatch.setattr(settings, "rag_jwt_secret", "test-secret")
+    monkeypatch.setattr(settings, "agentic_assistant_jwt_secret", "test-secret")
     monkeypatch.setattr(settings, "qdrant_url", "")
-    monkeypatch.setattr(settings, "rag_database_url", "")
+    monkeypatch.setattr(settings, "agentic_assistant_database_url", "")
     token = _rag_token()
     resp = await client.post(
         "/retrieval/search",
@@ -54,9 +54,9 @@ async def test_retrieval_503_when_unconfigured(client, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_retrieval_passes_access_filter(client, monkeypatch):
-    monkeypatch.setattr(settings, "rag_jwt_secret", "test-secret")
+    monkeypatch.setattr(settings, "agentic_assistant_jwt_secret", "test-secret")
     monkeypatch.setattr(settings, "qdrant_url", "http://qdrant:6333")
-    monkeypatch.setattr(settings, "rag_database_url", "postgresql://x")
+    monkeypatch.setattr(settings, "agentic_assistant_database_url", "postgresql://x")
     app.dependency_overrides[rag_auth.require_rag_rate_limit] = lambda: RagTokenClaims(
         subject="u-rag",
         domain="hr",

@@ -17,8 +17,8 @@ class RetrievalUnavailable(Exception):
 
 
 def _require_configured() -> None:
-    if not settings.qdrant_url or not settings.rag_database_url:
-        raise RetrievalUnavailable("QDRANT_URL / RAG_DATABASE_URL must be set")
+    if not settings.qdrant_url or not settings.agentic_assistant_database_url:
+        raise RetrievalUnavailable("QDRANT_URL / AGENTIC_ASSISTANT_DATABASE_URL must be set")
 
 
 def search(request: SearchRequest, access_filter: AccessFilter) -> SearchResponse:

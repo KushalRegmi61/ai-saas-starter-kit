@@ -137,7 +137,7 @@ def _maybe_index_in_rag(
     """Best-effort RAG auto-index of a finalized upload; never raises."""
     if content_type not in RAG_INDEXABLE_TYPES:
         return False
-    if not (settings.qdrant_url and settings.rag_database_url):
+    if not (settings.qdrant_url and settings.agentic_assistant_database_url):
         return False
     try:
         content = get_object_bytes(key)
@@ -149,7 +149,7 @@ def _maybe_index_in_rag(
             source=key,
             department=department,
             access_level=access_level,
-            tenant=settings.rag_tenant,
+            tenant=settings.agentic_assistant_tenant,
         )
         return True
     except ValueError:
