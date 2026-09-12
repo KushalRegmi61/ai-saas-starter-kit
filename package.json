@@ -6,12 +6,16 @@
     "predev": "node scripts/doctor.mjs",
     "dev": "sh scripts/dev.sh",
     "dev:web": "pnpm --filter @ai-saas-starter-kit/web dev",
+    "dev:assistant-web": "pnpm --filter @ai-saas-starter-kit/agentic-assistant-web dev -p 3001",
     "dev:api": "cd services/api && ../../.venv/bin/uvicorn main:app --reload --port ${API_PORT:-8000}",
     "stripe:seed": "node scripts/sync-stripe-env.mjs",
     "stripe:listen": "stripe listen --forward-to localhost:${API_PORT:-8000}/billing/webhook",
     "build": "pnpm --filter @ai-saas-starter-kit/web build",
+    "build:assistant-web": "pnpm --filter @ai-saas-starter-kit/agentic-assistant-web build",
     "typecheck": "pnpm --filter @ai-saas-starter-kit/web typecheck",
+    "typecheck:assistant-web": "pnpm --filter @ai-saas-starter-kit/agentic-assistant-web typecheck",
     "lint": "pnpm --filter @ai-saas-starter-kit/web lint",
+    "lint:assistant-web": "pnpm --filter @ai-saas-starter-kit/agentic-assistant-web lint",
     "lint:api": ".venv/bin/ruff check services/api",
     "lint:shared": ".venv/bin/ruff check services/shared",
     "lint:worker": ".venv/bin/ruff check services/worker",
@@ -28,6 +32,7 @@
     "check:structure": "cd services/api && ../../.venv/bin/python -m pytest tests/test_structure.py -v",
     "test:e2e": "pnpm --filter @ai-saas-starter-kit/web exec playwright test"
   },
+  "packageManager": "pnpm@11.26.0",
   "devDependencies": {
     "concurrently": "^9.1.0"
   },
