@@ -1,0 +1,75 @@
+[project]
+name = "ai-saas-agentic-assistant"
+version = "0.1.0"
+description = "Agentic knowledge assistant backend: LangGraph workflow over the shared RAG library with LangFuse tracing"
+requires-python = ">=3.11"
+# Workspace-local dependencies (must match sibling pyproject `name` fields so
+# the CodeNib graph resolves project edges):
+#   ai-saas-rag      -> libs/rag        (imported as `rag.*`)
+#   ai-saas-shared   -> services/shared (imported as `shared.*`)
+#   ai-saas-auth     -> libs/auth       (imported as `auth.*`; role-aware tool
+#                        binding is the approved next consumer)
+# The agent imports these as libraries; each host owns its own auth and
+# filter mapping.
+dependencies = [
+    "ai-saas-rag",
+    "ai-saas-shared",
+    "ai-saas-auth",
+    "fastapi>=0.139.2",
+    "uvicorn[standard]>=0.51.0",
+    "python-dotenv>=1.2.3",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "httpx>=0.28.1",
+    "openai>=3.13.0",
+    "langchain>=1.4.0",
+    "langchain-openai>=1.6.2",
+    "langgraph>=1.2.11",
+    "langfuse>=4.15.2",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.16.7", "pytest>=9.1.1", "pytest-asyncio>=1.4.0"]
+
+[tool.uv.sources]
+ai-saas-rag = { workspace = true }
+ai-saas-shared = { workspace = true }
+ai-saas-auth = { workspace = true }
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "T20",  # flake8-print (no bare print())
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "E501",   # line length handled by formatter
+    "B008",   # function call in default arg (FastAPI Depends)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agent"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

@@ -1,0 +1,14 @@
+[project]
+name = "knowledge-os"
+version = "0.1.0"
+description = "Knowledge OS monorepo workspace root (umbrella over libs/* and services/*)"
+requires-python = ">=3.11"
+# Umbrella only: runtime code lives in the workspace members below.
+dependencies = []
+
+[tool.uv.workspace]
+members = ["libs/*", "services/*"]
+
+# Virtual root: no artifact to build, only the workspace + lockfile.
+[tool.uv]
+package = false

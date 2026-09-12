@@ -50,9 +50,6 @@ jobs:
   api:
     name: API (ruff · pytest · structure)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: services/api
     steps:
       - uses: actions/checkout@v4
 
@@ -61,17 +58,17 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Create venv and install dependencies
-        run: |
-          python -m venv .venv
-          .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install -r requirements.txt
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync workspace
+        run: uv sync --frozen --all-packages --all-groups
 
       - name: Lint (ruff)
-        run: .venv/bin/ruff check .
+        run: .venv/bin/ruff check services/api libs/rag libs/auth services/shared services/worker
 
       - name: Tests (pytest)
-        run: .venv/bin/python -m pytest
+        run: cd services/api && ../../.venv/bin/python -m pytest
 
       - name: Structure boundary tests
-        run: .venv/bin/python -m pytest tests/test_structure.py -v
+        run: cd services/api && ../../.venv/bin/python -m pytest tests/test_structure.py -v

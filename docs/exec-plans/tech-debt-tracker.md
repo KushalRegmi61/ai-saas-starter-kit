@@ -80,7 +80,7 @@ Nitpicks surfaced by the verify pass on the file surface (logged, not blocking; 
 | Stripe webhook throttled by the per-IP limiter | `/billing/webhook` exempt from rate-limiting (signature-verified) |
 | PDF preview downloaded instead of rendering (forced `attachment`) | `inline` disposition for previews; `attachment` kept for real downloads |
 | `PyPDF2` deprecated/EOL | Migrated to maintained `pypdf` |
-| Unpinned Python deps / non-reproducible build | Exact `==` pins in `requirements.txt`; committed `railway.json` per service |
+| Unpinned Python deps / non-reproducible build | Committed `uv.lock` (`uv sync --frozen`); committed `railway.json` per service |
 | Interactive docs (`/docs`) exposed by default | `ENABLE_DOCS` defaults off |
 | Blocking boto3 in `async def` handlers froze the single event loop | B2 handlers are sync `def` (Starlette threadpool); upload offloads via `run_in_threadpool` |
 | Full-bucket scan on every list/stats/activity request, uncached | Short-TTL single-flight cache in `repo/b2_listing.list_all_objects`, invalidated on upload/delete |

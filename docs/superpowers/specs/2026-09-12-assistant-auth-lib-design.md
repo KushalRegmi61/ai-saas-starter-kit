@@ -18,8 +18,8 @@ agentic chat, restricting Supabase `/upload/*`.
 1. Lib address: `libs/auth/`, dist `ai-saas-auth`, import package `auth`;
    `pyproject.toml` + `src/` layout + setuptools `packages.find where=["src"]`
    (mirrors `libs/rag/pyproject.toml`, `services/shared/pyproject.toml`).
-2. Deps declared in the lib's `pyproject.toml` (`>=` ranges); exact `==` pins
-   live in each consuming service's `requirements.txt` (reproducibility rule,
+2. Deps declared in the lib's `pyproject.toml` (`>=` ranges); exact versions
+   lock in the workspace `uv.lock` (reproducibility rule,
    `docs/RELIABILITY.md`). New third-party dep: `bcrypt`.
 3. Lib is stateless: no FastAPI, no pool, no settings ownership. DB functions
    take a caller-provided `conn` (duck-typed `execute`); crypto/token
@@ -27,8 +27,9 @@ agentic chat, restricting Supabase `/upload/*`.
 4. Quality: copied ruff config (`known-first-party = ["auth"]`, T20, <300
    lines/file), `testpaths = ["tests"]`, tests for every behavior with fake
    connections (no live DB — `libs/rag/tests/test_registry.py` pattern).
-5. Wiring: `-e ../../libs/auth` editable pin in consumer `requirements.txt`;
-   `pnpm lint:auth` / `pnpm test:auth` scripts mirroring `lint:rag/test:rag`;
+5. Wiring: `ai-saas-auth` workspace dependency in consumer `pyproject.toml`
+   (+ `[tool.uv.sources]` `workspace = true`); `pnpm lint:auth` /
+   `pnpm test:auth` scripts mirroring `lint:rag/test:rag`;
    feature doc `docs/features/assistant-auth.md` (doc mapping: feature logic
    → `docs/features/`).
 6. Relationship to locked split-plan decisions: #5 ("no shared lib imports")

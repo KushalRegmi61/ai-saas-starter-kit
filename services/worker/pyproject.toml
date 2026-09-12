@@ -4,9 +4,16 @@ version = "0.1.0"
 description = "Minimal background worker for the AI SaaS starter kit"
 requires-python = ">=3.11"
 # Workspace-local dependency (must match services/shared pyproject `name` so
-# the CodeNib graph resolves the edge). Installed as an editable path pin in
-# requirements.txt (-e ../shared). Imports `shared.*` + `worker.*`.
+# the CodeNib graph resolves the edge). Installed as an editable workspace
+# member (uv workspace `knowledge-os`; `[tool.uv.sources]` below).
+# Imports `shared.*` + `worker.*`.
 dependencies = ["ai-saas-shared"]
+
+[dependency-groups]
+dev = ["pytest>=9.1.1"]
+
+[tool.uv.sources]
+ai-saas-shared = { workspace = true }
 
 [project.scripts]
 worker = "worker.main:cli"

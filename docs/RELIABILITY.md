@@ -77,7 +77,7 @@ The download counter and the `/metrics` counters are **in-process, per replica**
 - Build/start command, `/health` (API) or `/signin` (web) healthcheck, and
   `ON_FAILURE` restart policy are codified per service in `railway.json`.
 - Zero-downtime deploys via rolling updates.
-- Reproducible builds: exact-pinned `requirements.txt` (API) and
+- Reproducible builds: `uv.lock` (`uv sync --frozen`, Python) and
   `pnpm install --frozen-lockfile` (web).
 - Environment-specific configuration via env vars (no config files in prod).
 - `/health` returns `200` even when B2 is unreachable (body reports

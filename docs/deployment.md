@@ -70,8 +70,10 @@ client.
 `uvicorn main:app --host 0.0.0.0 --port $PORT`. Step-by-step Railway config
 (both services, root directories, build/start commands) lives in
 [`infra/railway/README.md`](../infra/railway/README.md). Render and Fly.io follow
-the same shape — set the root directory to `services/api`, install with
-`pip install -r requirements.txt`, and bind uvicorn to the platform's `$PORT`.
+the same shape — set the root directory to the repo root, install with
+`pip install uv && uv sync --frozen --no-dev`, start with
+`PYTHONPATH=services/api .venv/bin/uvicorn main:app`, and bind uvicorn to the
+platform's `$PORT`.
 
 ### Environment variables (backend service)
 
@@ -175,11 +177,11 @@ Uploads go **from the browser straight to B2** via a presigned PUT, so that
 cross-origin request needs a bucket CORS rule allowing your frontend origin — in
 **both** topologies (split and all-Vercel). Without it, every upload fails with an
 opaque browser CORS error while downloads (query-signed) still work. Apply it with
-the bundled helper (uses the API venv's boto3; reads `B2_*` from your environment):
+the bundled helper (uses the workspace venv's boto3; reads `B2_*` from your environment):
 
 ```bash
 set -a; . ./.env; set +a        # load B2_* into the shell (or export them by hand)
-services/api/.venv/bin/python scripts/configure_b2_cors.py \
+.venv/bin/python scripts/configure_b2_cors.py \
   --origin https://your-app.vercel.app
 # pass --origin repeatedly for multiple frontends (e.g. a preview domain)
 ```

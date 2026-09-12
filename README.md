@@ -128,7 +128,7 @@ Either way you get a clean project with no upstream history — ready to push to
 >
 > ```bash
 > pnpm install
-> cd services/api && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cd ../..
+> uv sync --all-packages --all-groups   # single workspace venv at .venv (uv.lock is committed)
 > cp .env.example .env          # then paste your B2 bucket + app key into .env (step 3)
 > supabase start && node scripts/sync-supabase-env.mjs
 > pnpm dev                      # http://localhost:3000 — sign up, then grant admin (see below)
@@ -145,23 +145,13 @@ pnpm install
 **2. Set up the backend**
 
 ```bash
-cd services/api
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cd ../..
+uv sync --all-packages --all-groups
 ```
 
-The API requirements include the workspace-shared `ai-saas-shared` package
-(`services/shared`) as an editable install — no extra step needed.
-
-**2b. Set up the worker (optional)**
-
-```bash
-cd services/worker
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt && pip install -e .
-cd ../..
-```
+One workspace venv at `.venv` covers every Python member (`services/api`,
+`services/worker`, `services/agentic-assistant`, `services/shared`,
+`libs/rag`, `libs/auth`) — workspace packages install editable, third-party
+versions lock in `uv.lock`. No per-service venvs, no extra step for the worker.
 
 **3. Add your B2 credentials**
 

@@ -1,4 +1,0 @@
-# Local workspace dependency: shared pure-Python primitives (services/shared).
--e ../shared
-# Test runner (mirrors services/api dev deps, minimal set for the worker).
-pytest==9.1.1
