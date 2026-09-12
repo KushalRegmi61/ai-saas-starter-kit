@@ -5,7 +5,7 @@ from auth.types import AssistantClaims
 from fastapi import HTTPException
 from rag.types import IngestionResult
 
-import agent.runtime.ingest as ingest_mod
+import api.ingest as ingest_mod
 from agent.authz import claims_to_access_filter, get_claims, require_admin
 from agent.config import get_agent_settings
 from main import app

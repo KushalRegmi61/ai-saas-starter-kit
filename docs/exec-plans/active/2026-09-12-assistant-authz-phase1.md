@@ -21,7 +21,7 @@ resolvable retrieval filter — while login/minting stays out of this service.
   `require_service_or_admin` (503 when neither credential configured, else
   401/403; returns claims for JWT callers, None for service-token callers) /
   `claims_to_access_filter` (UnknownRole → 403, empty tenant → ValueError).
-- `src/agent/runtime/ingest.py`: both routes use the dual-auth dependency;
+- `src/api/ingest.py` (moved out of `src/agent/runtime/` so routes live outside the agent package): both routes use the dual-auth dependency;
   422 / `{"purged": false}` contract unchanged. `require_service_token`
   removed (logic moved into `authz._valid_service_token`).
 - `main.py`: CORS middleware (Bearer, no cookies; `allow_origins=["*"]` until

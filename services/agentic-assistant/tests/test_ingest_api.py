@@ -2,7 +2,7 @@
 
 from rag.types import IngestionResult
 
-import agent.runtime.ingest as ingest_mod
+import api.ingest as ingest_mod
 from agent.config import get_agent_settings
 from main import app
 

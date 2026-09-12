@@ -35,7 +35,7 @@ Caller passes `AccessFilter(departments, max_access_level)`; rag only enforces. 
 ## Ingestion (agentic-assistant service)
 
 - Trigger: `finalize_upload` (`services/api/app/service/upload.py`) best-effort forwards via `_maybe_index_in_rag` → `repo/ingest_client.index_document_remote` → `POST /ingest` on the agentic-assistant service (service-token auth). PDF + plain text (`.txt/.md`) only; skipped (`rag_indexed=false`) when the agent service is unconfigured or forwarding fails.
-- Engine: `rag.ingestion.index_document` now runs inside `services/agentic-assistant` (`agent/runtime/ingest.py`); retrieval stays an agent-internal tool with no HTTP route.
+- Engine: `rag.ingestion.index_document` now runs inside `services/agentic-assistant` (`src/api/ingest.py`, dual-authed via `agent/authz.py`); retrieval stays an agent-internal tool with no HTTP route.
 - Metadata: explicit `department`/`access_level` args win; else filename-prefix inference (`infer_document_metadata`); else `general`/`internal`. Unknown explicit values are rejected (400) by the API before forwarding.
 - Idempotency: SHA-256 over loaded doc texts; a matching registry `content_hash` for the source skips re-index (0 chunks). Otherwise old chunks are replaced and the query cache flushed.
 - Failure contract: indexing never fails the upload — errors log and `FileUploadResponse` returns `rag_indexed=false`.
