@@ -3,6 +3,9 @@ name = "ai-saas-shared"
 version = "0.1.0"
 description = "Shared pure-Python primitives for the AI SaaS starter backend services"
 requires-python = ">=3.11"
+# Leaf package: no third-party or workspace-local dependencies (must stay
+# importable by any service without pulling service-specific SDKs).
+# Consumed by ai-saas-api (services/api) and ai-saas-worker (services/worker).
 dependencies = []
 
 [build-system]
@@ -30,6 +33,7 @@ select = [
 ]
 ignore = [
     "E501",   # line length handled by formatter
+    "B008",   # function call in default arg (FastAPI Depends)
 ]
 
 [tool.ruff.lint.isort]

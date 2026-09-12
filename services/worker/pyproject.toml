@@ -3,6 +3,9 @@ name = "ai-saas-worker"
 version = "0.1.0"
 description = "Minimal background worker for the AI SaaS starter kit"
 requires-python = ">=3.11"
+# Workspace-local dependency (must match services/shared pyproject `name` so
+# the CodeNib graph resolves the edge). Installed as an editable path pin in
+# requirements.txt (-e ../shared). Imports `shared.*` + `worker.*`.
 dependencies = ["ai-saas-shared"]
 
 [project.scripts]
@@ -33,6 +36,7 @@ select = [
 ]
 ignore = [
     "E501",   # line length handled by formatter
+    "B008",   # function call in default arg (FastAPI Depends)
 ]
 
 [tool.ruff.lint.isort]

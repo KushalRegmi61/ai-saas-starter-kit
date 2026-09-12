@@ -3,7 +3,23 @@ name = "ai-saas-api"
 version = "0.1.0"
 description = "FastAPI backend for the AI SaaS starter kit"
 requires-python = ">=3.11"
-dependencies = ["ai-saas-shared"]
+# Workspace-local dependencies (PEP 621 names must match the sibling
+# pyproject `name` fields so the CodeNib graph resolves project edges):
+#   ai-saas-shared -> services/shared (imported as `shared.*`)
+#   ai-saas-rag    -> libs/rag        (imported as `rag.*`)
+# Installed as editable path pins in requirements.txt (-e ../shared, -e ../rag),
+# mirroring the TS `workspace:*` convention in apps/web/package.json.
+dependencies = ["ai-saas-shared", "ai-saas-rag"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+# Flat layout: top-level `app/` package + `main.py` entrypoint (unlike the
+# src-layout siblings). Scoped explicitly so the graph owns exactly app*.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
 
 [tool.ruff]
 target-version = "py311"

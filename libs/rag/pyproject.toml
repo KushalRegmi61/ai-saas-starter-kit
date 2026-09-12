@@ -3,8 +3,10 @@ name = "ai-saas-rag"
 version = "0.1.0"
 description = "Shared RAG retrieval (+ future direct ingestion) for the AI SaaS starter backend services"
 requires-python = ">=3.11"
+# No workspace-local dependencies: src/rag imports only `rag.*` (verified —
+# zero `shared` imports). Previously listed ai-saas-shared, which created a
+# phantom graph edge. Consumed by ai-saas-api (services/api).
 dependencies = [
-    "ai-saas-shared",
     "pydantic>=2",
     "pydantic-settings>=2",
     "qdrant-client>=1.9",
@@ -32,16 +34,20 @@ line-length = 100
 
 [tool.ruff.lint]
 select = [
-    "E",
-    "F",
-    "I",
-    "B",
-    "UP",
-    "T20",
-    "SIM",
-    "RUF",
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "T20",  # flake8-print (no bare print())
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific
 ]
-ignore = ["E501"]
+ignore = [
+    "E501",   # line length handled by formatter
+    "B008",   # function call in default arg (FastAPI Depends)
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["rag"]

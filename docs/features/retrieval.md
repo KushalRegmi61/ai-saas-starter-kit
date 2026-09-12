@@ -23,7 +23,7 @@ Caller passes `AccessFilter(departments, max_access_level)`; rag only enforces. 
 
 ## Tests
 
-`services/rag/tests/` (router, RRF, formatting, RBAC, cache keys) + `services/api/tests/test_retrieval.py` (401/503/filter passthrough, global-domain mapping).
+`libs/rag/tests/` (router, RRF, formatting, RBAC, cache keys) + `services/api/tests/test_retrieval.py` (401/503/filter passthrough, global-domain mapping).
 
 ## Ingestion (Phase 2)
 
