@@ -37,8 +37,11 @@ def search_rag(
             candidate_k,
             list(filt.departments),
             int(filt.max_access_level),
+            filt.tenant,
         )
-        corpus_docs = qdrant_repo.scroll_corpus(list(filt.departments), int(filt.max_access_level))
+        corpus_docs = qdrant_repo.scroll_corpus(
+            list(filt.departments), int(filt.max_access_level), tenant=filt.tenant
+        )
         semantic_results = semantic_future.result()
 
     if resolved_mode == "hybrid":

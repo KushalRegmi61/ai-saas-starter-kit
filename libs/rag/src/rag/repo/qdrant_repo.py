@@ -117,12 +117,16 @@ def delete_chunks_by_source(source: str) -> None:
     )
 
 
-def _qdrant_filter(departments: list[str], max_access_level: int):
-    from qdrant_client.http.models import FieldCondition, Filter, MatchAny
+def _qdrant_filter(
+    departments: list[str], max_access_level: int, tenant: str | None = None
+):
+    from qdrant_client.http.models import FieldCondition, Filter, MatchAny, MatchValue
 
     must = []
     if "all" not in departments:
         must.append(FieldCondition(key="department", match=MatchAny(any=list(departments))))
+    if tenant is not None:
+        must.append(FieldCondition(key="tenant", match=MatchValue(value=tenant)))
     must.append(
         FieldCondition(
             key="access_level", match=MatchAny(any=list(allowed_level_labels(max_access_level)))
@@ -136,6 +140,7 @@ def semantic_search(
     top_k: int,
     departments: list[str],
     max_access_level: int,
+    tenant: str | None = None,
 ) -> list[tuple[object, float]]:
     """Filtered cosine search. Returns (doc-like, score) with page_content/metadata attrs."""
     from rag.repo.neon_repo import SimpleDoc
@@ -145,7 +150,7 @@ def semantic_search(
     points = client.query_points(
         collection_name=s.qdrant_collection,
         query=query_vector,
-        query_filter=_qdrant_filter(departments, max_access_level),
+        query_filter=_qdrant_filter(departments, max_access_level, tenant),
         limit=top_k,
         with_payload=True,
     ).points
@@ -171,7 +176,10 @@ def semantic_search(
 
 
 def scroll_corpus(
-    departments: list[str], max_access_level: int, limit: int = 10000
+    departments: list[str],
+    max_access_level: int,
+    limit: int = 10000,
+    tenant: str | None = None,
 ) -> list[object]:
     """Load accessible chunk texts for BM25. Filtered in Python via RBAC."""
     from rag.repo.neon_repo import SimpleDoc
@@ -200,7 +208,7 @@ def scroll_corpus(
                 "department": payload.get("department", "general"),
                 "access_level": payload.get("access_level", "internal"),
             }
-            if passes_access_filter(meta, departments, max_access_level):
+            if passes_access_filter(meta, departments, max_access_level, tenant):
                 docs.append(SimpleDoc(text=str(payload.get("text", "")), metadata=meta))
         if offset is None:
             break

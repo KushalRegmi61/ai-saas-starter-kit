@@ -56,13 +56,20 @@ def infer_document_metadata(filename: str) -> dict[str, str]:
     return {"department": department, "access_level": access_level}
 
 
-def passes_access_filter(metadata: dict, departments: list[str], max_access_level: int) -> bool:
+def passes_access_filter(
+    metadata: dict,
+    departments: list[str],
+    max_access_level: int,
+    tenant: str | None = None,
+) -> bool:
     chunk_dept = metadata.get("department", "general")
     chunk_level_str = metadata.get("access_level", "internal")
     chunk_level = ACCESS_LEVELS.get(chunk_level_str, 1)
     dept_ok = "all" in departments or chunk_dept in departments
     level_ok = chunk_level <= max_access_level
-    return dept_ok and level_ok
+    if tenant is None:
+        return dept_ok and level_ok
+    return dept_ok and level_ok and metadata.get("tenant", "default") == tenant
 
 
 def allowed_level_labels(max_level: int) -> tuple[str, ...]:
