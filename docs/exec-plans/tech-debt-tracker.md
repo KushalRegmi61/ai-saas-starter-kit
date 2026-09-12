@@ -62,6 +62,7 @@ Nitpicks surfaced by the verify pass on the file surface (logged, not blocking; 
 | Agent search has no HTTP surface yet (retrieval is tool-only; `claims_to_access_filter` is an unused-by-routes seam until the frontend lands) | Browser search can't ship until a route resolves claims → filter → answer | Add an authed `POST /ask` route on agentic-assistant reusing `get_claims` + `claims_to_access_filter` when the frontend needs it | Medium |
 | API forwards ingest/purge with the machine service token only (no user identity) | Agent-side audit can't attribute forwarded uploads to a human; dual-auth accepts service token without a user | Forward the caller's assistant JWT from `services/api` (`ingest_client.py`) once login issuance exists, and log `claims.subject` on the agent side | Medium |
 | Agent CORS `allow_origins=["*"]` | Any origin can call the mutation surface (still credential-gated, but wider than needed) | Tighten to the frontend domain once known | Low |
+| Assistant login has no brute-force rate limit | Repeated password attempts can target `/auth/login` directly | Add gateway/slowapi or a shared Neon-backed attempt window before public exposure | Medium |
 
 ## Resolved
 

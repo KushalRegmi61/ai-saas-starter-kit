@@ -46,24 +46,44 @@ silently truncated.
 `libs/auth/tests/` (crypto, tokens incl. tamper/expiry/unknown-role,
 mapping ladder, store SQL-shape on fake connections — no live DB).
 
-## Service integration (agentic-assistant, phase 1)
+## Service integration (agentic-assistant)
 
 `services/agentic-assistant/src/agent/authz.py` is the reference consumer:
 `get_claims` (assistant-JWT verify → 401), `require_admin` (`role == "admin"`
-→ 403 otherwise), `require_service_or_admin` (machine service token **or**
-admin JWT — either suffices, so API-forwarded auto-index keeps working while
-browser callers authenticate directly after frontend login), and
+→ 403 otherwise), `require_jwt_admin` (JWT-only admin gate for identity
+management), `require_service_or_admin` (machine service token **or** admin JWT
+— either suffices, so API-forwarded auto-index keeps working while browser
+callers authenticate directly after frontend login), and
 `claims_to_access_filter` (`role_to_filter` → `AccessFilter`, emp 1 / lead 2 /
 mgr+admin 3). Both mutation routes (`POST /ingest`, `DELETE /sources`) use the
 dual-auth dependency; user secret is `AgentSettings.assistant_jwt_secret`
-(`ASSISTANT_JWT_SECRET`, empty = JWT path absent, fail closed). The app also
-serves CORS for the browser-direct admin flow (Bearer, no cookies; tighten
-`allow_origins` once the frontend domain is known). Tests:
-`services/agentic-assistant/tests/test_authz.py` (dual-auth matrix, ceilings,
-fail-closed cases).
+(`AGENTIC_ASSISTANT_JWT_SECRET`, empty = JWT path absent, fail closed). The app
+also serves CORS for the browser-direct admin flow (Bearer, no cookies; tighten
+`allow_origins` once the frontend domain is known).
 
-Deferred: login/mint endpoints (agent verifies only — identity issuance lives
-elsewhere), an HTTP search surface (retrieval stays tool-only;
+The agent owns login and user administration:
+
+- `POST /auth/login` accepts email/password and returns a 12-hour-by-default
+  assistant JWT plus the public user shape. Unknown users and bad passwords
+  return the same `401 Invalid email or password` response.
+- `POST /auth/users`, `GET /auth/users`, and
+  `PATCH /auth/users/{id}/role` require an admin assistant JWT. Service tokens
+  cannot provision or modify human users.
+- User tables and audit events are created in the shared Neon database by
+  `libs/auth`. `AGENTIC_ASSISTANT_ADMIN_EMAIL` and
+  `AGENTIC_ASSISTANT_ADMIN_PASSWORD` seed the first admin without overwriting
+  an existing row.
+- `AGENTIC_ASSISTANT_DATABASE_URL` missing → auth routes return `503`;
+  configured but unreachable → service startup fails. Partial bootstrap
+  credentials fail startup.
+
+The service uses the `AGENTIC_ASSISTANT_*` namespace for its identity and
+service-integration settings. Tests:
+`services/agentic-assistant/tests/test_authz.py` (dual-auth matrix, ceilings,
+fail-closed cases) and `test_auth_api.py` (login/admin route contracts).
+
+Deferred: an HTTP search surface (retrieval stays tool-only;
 `claims_to_access_filter` is the seam the future caller uses), API forwarding
-of the caller's JWT, manager dashboard, per-project scoping. See
+of the caller's JWT, manager dashboard, per-project scoping, frontend token
+storage, password reset/change, and login rate limiting. See
 `docs/superpowers/specs/2026-09-12-assistant-auth-lib-design.md`.

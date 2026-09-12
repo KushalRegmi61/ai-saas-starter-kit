@@ -1,0 +1,25 @@
+"""Agentic-assistant environment namespace contract."""
+
+from agent.config import AgentSettings
+
+
+def test_identity_settings_use_agentic_assistant_namespace(monkeypatch):
+    monkeypatch.setenv("AGENTIC_ASSISTANT_DATABASE_URL", "postgresql://db")
+    monkeypatch.setenv("AGENTIC_ASSISTANT_ADMIN_EMAIL", "root@example.com")
+    monkeypatch.setenv("AGENTIC_ASSISTANT_ADMIN_PASSWORD", "password")
+    monkeypatch.setenv("AGENTIC_ASSISTANT_JWT_SECRET", "jwt-secret")
+    monkeypatch.setenv("AGENTIC_ASSISTANT_JWT_TTL_SECONDS", "900")
+    monkeypatch.setenv("AGENTIC_ASSISTANT_SERVICE_TOKEN", "service-token")
+    monkeypatch.setenv("AGENTIC_ASSISTANT_TENANT", "assistant")
+    monkeypatch.setenv("ASSISTANT_JWT_SECRET", "legacy-secret")
+    monkeypatch.setenv("AGENT_SERVICE_TOKEN", "legacy-token")
+
+    settings = AgentSettings(_env_file=None)
+
+    assert settings.agentic_assistant_database_url == "postgresql://db"
+    assert settings.agentic_assistant_admin_email == "root@example.com"
+    assert settings.agentic_assistant_admin_password == "password"
+    assert settings.assistant_jwt_secret == "jwt-secret"
+    assert settings.agentic_assistant_jwt_ttl_seconds == 900
+    assert settings.agent_service_token == "service-token"
+    assert settings.default_tenant == "assistant"

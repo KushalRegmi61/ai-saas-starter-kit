@@ -30,7 +30,8 @@ resolvable retrieval filter — while login/minting stays out of this service.
   both routes, bad/expired JWT 401, service-token precedence, 503 matrix,
   claims roundtrip, admin gate, per-role ceilings, unknown-role/empty-tenant.
 - Docs: `docs/features/assistant-auth.md` (phase-1 section), `.env.example`
-  (`ASSISTANT_JWT_SECRET`), tech-debt rows (`/ask`, JWT forwarding, CORS).
+  (`AGENTIC_ASSISTANT_JWT_SECRET`), tech-debt rows (`/ask`, JWT forwarding,
+  CORS).
 
 ## Gates
 

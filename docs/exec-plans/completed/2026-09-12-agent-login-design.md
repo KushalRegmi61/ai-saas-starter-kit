@@ -1,5 +1,7 @@
 # Design: agent login + user admin (agentic-assistant)
 
+<!-- Implemented 2026-09-12; moved to docs/exec-plans/completed after validation. -->
+
 <!-- Spec for the login pass. Approach A (agent-local auth) selected 2026-09-12.
      Lives under exec-plans/active per AGENTS.md §7 instead of the skill-default
      docs/superpowers/specs/. Frontend token storage + chat websocket are
@@ -16,7 +18,8 @@ routes. No Supabase in the agent; no login flow exists anywhere else to reuse.
 ## Decisions (locked with user)
 
 1. Agent-local auth against Neon `assistant_users` (libs/auth store/crypto/tokens).
-2. First admin env-seeded on startup (`ASSISTANT_ADMIN_EMAIL` + `ASSISTANT_ADMIN_PASSWORD`).
+2. First admin env-seeded on startup (`AGENTIC_ASSISTANT_ADMIN_EMAIL` +
+   `AGENTIC_ASSISTANT_ADMIN_PASSWORD`).
 3. Scope = login + admin user management in one pass (login alone is a dead end).
 4. `agent/` is reasoning-only: identity code lives in new top-level `src/models/`.
 5. No `GET /auth/me`: the JWT carries `sub`/`role`/`exp`; the frontend reads
@@ -41,7 +44,8 @@ Response user shape reuses `auth.types.AssistantUser`. Tokens minted with
 
 - `src/models/__init__.py` — package docstring only.
 - `src/models/users.py` (single file, ~150 lines) — all sync, lib-style:
-  - `get_pool(database_url)` — `psycopg_pool.ConnectionPool` (thread-safe; sync
+  - `get_pool(agentic_assistant_database_url)` — `psycopg_pool.ConnectionPool`
+    (thread-safe; sync
     matches the lib's `%s` store contract, so handlers stay sync `def` and
     FastAPI's threadpool handles concurrency; no async-pool machinery).
   - `ensure_and_seed(conn, admin_email, admin_password)` — `ensure_assistant_tables`
@@ -55,8 +59,12 @@ Response user shape reuses `auth.types.AssistantUser`. Tokens minted with
 
 ## Wiring (`main.py` + `config.py`)
 
-- Settings: `database_url: str = ""`, `assistant_admin_email/password: str = ""`,
-  `assistant_jwt_ttl_seconds: int = 12 * 3600` (lib default).
+- Settings use explicit `AGENTIC_ASSISTANT_*` aliases:
+  `AGENTIC_ASSISTANT_DATABASE_URL`, `AGENTIC_ASSISTANT_ADMIN_EMAIL`,
+  `AGENTIC_ASSISTANT_ADMIN_PASSWORD`, `AGENTIC_ASSISTANT_JWT_SECRET`,
+  `AGENTIC_ASSISTANT_JWT_TTL_SECONDS`, and
+  `AGENTIC_ASSISTANT_SERVICE_TOKEN`. The API's outbound agent settings use
+  `AGENTIC_ASSISTANT_SERVICE_URL` and `AGENTIC_ASSISTANT_SERVICE_TOKEN`.
 - Lifespan: open pool (503 auth routes when `database_url` empty — fail closed,
   same pattern as the service-token 503), ensure + seed, close on shutdown.
 - Mount `api.auth.router`. Runtime dep: pool from app state; JWT admin dep reuses
@@ -69,7 +77,7 @@ Response user shape reuses `auth.types.AssistantUser`. Tokens minted with
   semantics reused).
 - Passwords: bcrypt via lib (72-byte cap); never logged, never returned.
 - Seed password lives only in env (Railway secret); startup logs email, never secret.
-- `assistant_jwt_secret` must now be non-empty in any env serving browser traffic
+- `assistant_jwt_secret` (`AGENTIC_ASSISTANT_JWT_SECRET`) must now be non-empty in any env serving browser traffic
   (previously optional); empty still fails closed.
 
 ## Tests (TDD, `tests/test_auth_api.py`)
@@ -83,9 +91,10 @@ unknown id → 404; seed inserts-when-missing, never-overwrites.
 ## Docs + env (same change)
 
 - `docs/features/assistant-auth.md` (login section), `.env.example`
-  (`DATABASE_URL`, `ASSISTANT_ADMIN_EMAIL/PASSWORD`, `ASSISTANT_JWT_TTL_SECONDS`),
+  (`AGENTIC_ASSISTANT_DATABASE_URL`, `AGENTIC_ASSISTANT_ADMIN_EMAIL/PASSWORD`,
+  `AGENTIC_ASSISTANT_JWT_TTL_SECONDS`, and the service URL/token names),
   this plan → completed on merge, tech-debt row for login rate limiting.
-- New dep `psycopg[binary,pool]` in agent `pyproject.toml` (+ lock); isort
+- New deps `psycopg[binary]` and `psycopg-pool` in agent `pyproject.toml` (+ lock); isort
   `known-first-party += ["models"]`.
 
 ## Out of scope

@@ -27,6 +27,8 @@ dependencies = [
     "langchain-openai>=1.6.2",
     "langgraph>=1.2.11",
     "langfuse>=4.15.2",
+    "psycopg[binary]>=3.1",
+    "psycopg-pool>=3.1",
 ]
 
 [dependency-groups]
@@ -66,7 +68,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["agent", "api"]
+known-first-party = ["agent", "api", "models"]
 
 [tool.ruff.format]
 quote-style = "double"

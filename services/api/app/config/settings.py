@@ -159,8 +159,8 @@ class Settings(BaseSettings):
 
     # Agentic-assistant ingestion surface (POST /ingest, DELETE /sources).
     # Empty = finalize/delete skip forwarding (uploads still succeed).
-    agent_service_url: str = ""
-    agent_service_token: str = ""
+    agent_service_url: str = Field(default="", validation_alias="AGENTIC_ASSISTANT_SERVICE_URL")
+    agent_service_token: str = Field(default="", validation_alias="AGENTIC_ASSISTANT_SERVICE_TOKEN")
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

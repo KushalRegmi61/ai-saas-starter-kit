@@ -31,7 +31,8 @@
   - `validate-key` (traversal guard) and `health` commands; second consumer of `ai-saas-shared`
 - **services/agentic-assistant/** — Agentic knowledge assistant backend (`ai-saas-agentic-assistant`)
   - LangGraph workflow (`agent/graph/`: retrieve → grade → rewrite/generate → grounding check) over the shared RAG library; RAG retrieval registered as agent tools bound to the host-resolved `AccessFilter`
-  - LangFuse tracing (`agent/tracing.py`: span context manager + LangChain callbacks, no-op unless keys configured); auth-agnostic (host resolves identity, HTTP runtime lands with the auth session)
+  - Agent-local identity (`api/auth.py` + `models/users.py`): Neon-backed login, admin user provisioning, role changes, and audit events using the shared `libs/auth` primitives
+  - LangFuse tracing (`agent/tracing.py`: span context manager + LangChain callbacks, no-op unless keys configured); retrieval remains host-filtered while the agent owns its assistant JWT issuance
 - **packages/shared/** — TypeScript type definitions
   - Mirrors Pydantic models from the API
   - Consumed by `apps/web/` as workspace dependency
@@ -107,6 +108,7 @@ services/api/
 - **Backblaze B2 S3 API** — file storage, retrieval, deletion, presigned URLs
 - **Supabase** — authentication (GoTrue) + Postgres/PostgREST; local or hosted, config-only swap
 - **Stripe** — subscription billing (Checkout, Billing Portal, webhooks); test-mode for local dev
+- **Neon Postgres** — agentic-assistant user identity, audit events, RAG registry, and query cache; configured through `AGENTIC_ASSISTANT_DATABASE_URL`
 
 ## Trust Boundaries
 
@@ -119,6 +121,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 ## Data Flows
 
 - **Auth**: Browser -> Supabase (sign up/in) -> confirm via `/auth/confirm` -> cookie session; `proxy.ts` refreshes it per request and redirects unauthenticated users to `/signin`. API calls carry the token; the API validates it against Supabase (`repo/supabase_auth.py`).
+- **Assistant auth**: Browser or operator -> `POST /auth/login` on agentic-assistant -> assistant JWT (`sub`/`role`/`exp`/`iat`/`iss`); admin user routes require that JWT and remain independent from Supabase `profiles.role`.
 - **Billing**: Browser -> `POST /billing/checkout` -> Stripe Checkout (redirect) -> Stripe -> `POST /billing/webhook` (signature-verified) -> `service/billing.py` upserts the subscription into Supabase (service role). `require_plan(min_tier)` reads the derived entitlements and 402s below the required tier.
 - **Upload** (direct browser→B2): Browser -> `POST /upload/presign` -> API validates the intent + signs a type-bound PUT URL -> Browser `PUT`s the bytes straight to B2 -> Browser -> `POST /upload/complete` -> API confirms existence, true size, and magic-byte signature (deleting a spoofed object) -> response. Bytes never transit the API, so uploads aren't bounded by a serverless request-body cap.
 - **List**: Browser -> `GET /files` -> service calls repo -> returns file list

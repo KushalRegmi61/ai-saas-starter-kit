@@ -1,0 +1,137 @@
+"""Login and admin user-management routes for the assistant identity store."""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from auth.tokens import mint_assistant_token
+from auth.types import AssistantClaims, AssistantUser, CreateUserRequest, LoginRequest
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from psycopg.errors import UniqueViolation
+from psycopg_pool import ConnectionPool
+from pydantic import BaseModel, Field
+
+from agent.authz import require_jwt_admin
+from agent.config import get_agent_settings
+from models import users
+
+router = APIRouter(prefix="/auth")
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int
+    user: AssistantUser
+
+
+class RoleUpdateRequest(BaseModel):
+    role: str = Field(pattern="^(employee|lead|manager|admin)$")
+
+
+def get_user_pool(request: Request) -> ConnectionPool:
+    pool = getattr(request.app.state, "assistant_user_pool", None)
+    if pool is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Assistant authentication is not configured",
+        )
+    return pool
+
+
+def _require_jwt_secret() -> str:
+    secret = get_agent_settings().assistant_jwt_secret
+    if not secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Assistant authentication is not configured",
+        )
+    return secret
+
+
+def _invalid_login() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid email or password",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+@router.post("/login", response_model=LoginResponse)
+def login(payload: LoginRequest, pool: ConnectionPool = Depends(get_user_pool)) -> LoginResponse:
+    secret = _require_jwt_secret()
+    with pool.connection() as connection:
+        user = users.authenticate(connection, payload.email, payload.password)
+    if user is None:
+        raise _invalid_login()
+
+    settings = get_agent_settings()
+    token = mint_assistant_token(
+        user_id=user["id"],
+        role=user["role"],
+        secret=secret,
+        ttl_seconds=settings.agentic_assistant_jwt_ttl_seconds,
+    )
+    return LoginResponse(
+        access_token=token,
+        expires_in=settings.agentic_assistant_jwt_ttl_seconds,
+        user=user,
+    )
+
+
+@router.post("/users", response_model=AssistantUser, status_code=status.HTTP_201_CREATED)
+def create_user(
+    payload: CreateUserRequest,
+    pool: ConnectionPool = Depends(get_user_pool),
+    claims: AssistantClaims = Depends(require_jwt_admin),
+) -> AssistantUser:
+    try:
+        with pool.connection() as connection:
+            return users.create_user(
+                connection,
+                email=payload.email,
+                password=payload.password,
+                role=payload.role,
+                actor_id=claims.subject,
+            )
+    except UniqueViolation:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Email already exists"
+        ) from None
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from None
+
+
+@router.get("/users", response_model=list[AssistantUser])
+def list_users(
+    pool: ConnectionPool = Depends(get_user_pool),
+    _claims: AssistantClaims = Depends(require_jwt_admin),
+) -> list[AssistantUser]:
+    with pool.connection() as connection:
+        return users.list_users(connection)
+
+
+@router.patch("/users/{user_id}/role", response_model=AssistantUser)
+def update_role(
+    user_id: str,
+    payload: RoleUpdateRequest,
+    pool: ConnectionPool = Depends(get_user_pool),
+    claims: AssistantClaims = Depends(require_jwt_admin),
+) -> AssistantUser:
+    if claims.subject == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="An admin cannot change their own role",
+        )
+    with pool.connection() as connection:
+        user = users.set_role(
+            connection,
+            user_id=user_id,
+            role=payload.role,
+            actor_id=claims.subject,
+        )
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user

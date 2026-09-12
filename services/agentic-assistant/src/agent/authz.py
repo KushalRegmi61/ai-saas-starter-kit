@@ -75,6 +75,17 @@ def require_admin(claims: AssistantClaims) -> AssistantClaims:
     return claims
 
 
+def require_jwt_admin(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> AssistantClaims:
+    """Require an assistant JWT with the admin role.
+
+    This deliberately does not use ``require_service_or_admin``: machine
+    callers may mutate the indexed corpus but must never manage human users.
+    """
+    return require_admin(get_claims(credentials))
+
+
 def require_service_or_admin(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> AssistantClaims | None:
