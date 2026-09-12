@@ -8,10 +8,18 @@ SearchMode = Literal["semantic", "hybrid", "auto"]
 
 
 class AccessFilter(BaseModel):
-    """Resolved access policy passed into retrieval. Never constructed by rag itself."""
+    """Resolved access policy passed into retrieval. Never constructed by rag itself.
+
+    `tenant` isolates independent projects sharing one backend (None =
+    legacy single-corpus behavior, normalized to "default" on the wire).
+    `attributes` carries service-specific claims the lib ignores today and
+    hosts may enforce tomorrow (ABAC seam).
+    """
 
     departments: list[str]
     max_access_level: int
+    tenant: str | None = None
+    attributes: dict[str, str] = Field(default_factory=dict)
 
 
 class Source(BaseModel):

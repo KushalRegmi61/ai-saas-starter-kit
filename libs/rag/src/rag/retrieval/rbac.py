@@ -67,3 +67,8 @@ def passes_access_filter(metadata: dict, departments: list[str], max_access_leve
 
 def allowed_level_labels(max_level: int) -> tuple[str, ...]:
     return tuple(label for label, value in ACCESS_LEVELS.items() if value <= max_level)
+
+
+def normalize_tenant(tenant: str | None) -> str:
+    """Single normalization point: empty/None becomes "default"."""
+    return tenant or "default"
