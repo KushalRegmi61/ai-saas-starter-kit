@@ -211,3 +211,21 @@ def test_get_and_delete_document_filter_by_tenant():
     assert conn.executed[-1][1] == ("api", "s")
     neon_repo.delete_document(conn, "s", tenant="api")
     assert "tenant = %s" in conn.executed[-1][0]
+
+
+def test_delete_chunks_by_source_scopes_to_tenant(monkeypatch):
+    from rag.repo import qdrant_repo
+
+    seen = {}
+
+    class FakeClient:
+        def delete(self, collection_name, points_selector):
+            seen["filter"] = points_selector
+
+    monkeypatch.setattr(qdrant_repo, "_cached_client", lambda: FakeClient())
+    qdrant_repo.delete_chunks_by_source("s", tenant="api")
+    keys = [c.key for c in seen["filter"].must]
+    assert keys == ["source", "tenant"]
+
+    qdrant_repo.delete_chunks_by_source("s")
+    assert [c.key for c in seen["filter"].must] == ["source"]

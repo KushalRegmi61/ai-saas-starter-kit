@@ -93,10 +93,11 @@ def index_document(
     )
 
 
-def delete_indexed_source(source: str) -> None:
+def delete_indexed_source(source: str, tenant: str | None = None) -> None:
     """Remove all chunks, the registry row, and cached answers for a source."""
-    delete_chunks_by_source(source)
+    tn = normalize_tenant(tenant)
+    delete_chunks_by_source(source, tenant=tn)
     with get_conn() as conn:
         ensure_tables(conn)
-        delete_document(conn, source)
+        delete_document(conn, source, tenant=tn)
         flush_cache(conn)

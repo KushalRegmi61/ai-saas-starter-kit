@@ -6,7 +6,7 @@ import hashlib
 from functools import lru_cache
 
 from rag.config import get_rag_settings
-from rag.retrieval.rbac import allowed_level_labels
+from rag.retrieval.rbac import allowed_level_labels, normalize_tenant
 
 
 def _client():
@@ -109,13 +109,16 @@ def upsert_chunks(chunks: list[object], vectors: list[list[float]]) -> int:
     return len(points)
 
 
-def delete_chunks_by_source(source: str) -> None:
-    """Delete every point whose payload source equals the given source."""
+def delete_chunks_by_source(source: str, tenant: str | None = None) -> None:
+    """Delete points for a source; tenant-scoped when given (never cross-tenant)."""
     from qdrant_client.http.models import FieldCondition, Filter, MatchValue
 
+    must = [FieldCondition(key="source", match=MatchValue(value=source))]
+    if tenant is not None:
+        must.append(FieldCondition(key="tenant", match=MatchValue(value=normalize_tenant(tenant))))
     _cached_client().delete(
         collection_name=get_rag_settings().qdrant_collection,
-        points_selector=Filter(must=[FieldCondition(key="source", match=MatchValue(value=source))]),
+        points_selector=Filter(must=must),
     )
 
 
