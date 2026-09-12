@@ -9,7 +9,7 @@ import rag.repo.qdrant_repo as qr
 from rag.config import RagSettings
 from rag.repo.neon_repo import SimpleDoc
 
-PAYLOAD_KEYS = {"text", "source", "page", "chunk_index", "department", "access_level"}
+PAYLOAD_KEYS = {"text", "source", "page", "chunk_index", "department", "access_level", "tenant"}
 
 
 def _settings(dims: int = 4) -> RagSettings:
@@ -64,6 +64,7 @@ def test_upsert_payload_keys_exact(monkeypatch):
         assert point.payload["chunk_index"] == chunk.metadata["chunk_index"]
         assert point.payload["department"] == "hr"
         assert point.payload["access_level"] == "confidential"
+        assert point.payload["tenant"] == chunk.metadata.get("tenant", "default")
         assert list(point.vector) == [0.1] * 4 or list(point.vector) == [0.2] * 4
 
 

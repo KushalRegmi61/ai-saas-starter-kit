@@ -1,5 +1,26 @@
+from rag.repo.neon_repo import SimpleDoc as _SimpleDoc
 from rag.retrieval.rbac import normalize_tenant, passes_access_filter
 from rag.types import AccessFilter
+
+
+def SimpleDocForTest(**kw):
+    meta = {"source": "s", "department": "general", "access_level": "internal"}
+    meta.update(kw.pop("metadata", {}))
+    return _SimpleDoc(text=kw.pop("text", "hello"), metadata=meta)
+
+
+class _FakeConnCtx:
+    def __init__(self):
+        self.conn = object()
+
+    def __call__(self):
+        return self
+
+    def __enter__(self):
+        return self.conn
+
+    def __exit__(self, *exc):
+        return False
 
 
 def test_access_filter_carries_tenant_and_attributes():
@@ -52,3 +73,88 @@ def test_qdrant_filter_without_tenant_unchanged():
 
     f = qdrant_repo._qdrant_filter(["hr"], 1)
     assert [c.key for c in f.must] == ["department", "access_level"]
+
+
+def test_index_document_stamps_tenant_and_explicit_metadata(monkeypatch):
+    import rag.ingestion.index as idx
+
+    captured = {}
+
+    monkeypatch.setattr(idx, "load_bytes", lambda content, filename: [SimpleDocForTest()])
+    monkeypatch.setattr(idx, "chunk_documents", lambda docs: docs)
+    monkeypatch.setattr(idx, "embed_texts", lambda texts: [[0.0] * 4 for _ in texts])
+    monkeypatch.setattr(idx, "ensure_collection", lambda: None)
+    def fake_upsert(chunks, vectors):
+        captured["payload"] = dict(chunks[0].metadata)
+        return 1
+
+    monkeypatch.setattr(idx, "upsert_chunks", fake_upsert)
+    monkeypatch.setattr(idx, "get_conn", _FakeConnCtx())
+    monkeypatch.setattr(idx, "ensure_tables", lambda conn: None)
+    monkeypatch.setattr(idx, "get_document", lambda conn, source, tenant="default": None)
+    monkeypatch.setattr(idx, "delete_chunks_by_source", lambda source, tenant="default": None)
+    monkeypatch.setattr(idx, "flush_cache", lambda conn, tenant=None: 0)
+    monkeypatch.setattr(idx, "upsert_document", lambda conn, **kw: captured.update(registry=kw))
+
+    from rag.ingestion.index import index_document
+
+    index_document(b"x", "hr_policy.pdf", source="s", department="hr", access_level="confidential", tenant="api")
+    assert captured["payload"]["tenant"] == "api"
+    assert captured["payload"]["department"] == "hr"
+    assert captured["payload"]["access_level"] == "confidential"
+    assert captured["registry"]["tenant"] == "api"
+
+
+def test_semantic_search_meta_carries_tenant(monkeypatch):
+    from types import SimpleNamespace
+
+    import rag.repo.qdrant_repo as qr
+
+    point = SimpleNamespace(
+        payload={
+            "text": "hello",
+            "source": "s",
+            "page": 1,
+            "chunk_index": 0,
+            "department": "hr",
+            "access_level": "internal",
+            "tenant": "api",
+        },
+        score=0.9,
+    )
+    client = SimpleNamespace(
+        query_points=lambda **kw: SimpleNamespace(points=[point]),
+    )
+    monkeypatch.setattr(qr, "_cached_client", lambda: client)
+    monkeypatch.setattr(
+        qr, "get_rag_settings", lambda: SimpleNamespace(qdrant_collection="chunks")
+    )
+    results = qr.semantic_search([0.1] * 4, 5, ["hr"], 3, tenant="api")
+    assert results[0][0].metadata["tenant"] == "api"
+
+
+def test_scroll_corpus_meta_carries_tenant(monkeypatch):
+    from types import SimpleNamespace
+
+    import rag.repo.qdrant_repo as qr
+
+    point = SimpleNamespace(
+        payload={
+            "text": "hello",
+            "source": "s",
+            "page": 1,
+            "chunk_index": 0,
+            "department": "hr",
+            "access_level": "internal",
+            "tenant": "api",
+        },
+    )
+    client = SimpleNamespace(
+        scroll=lambda **kw: ([point], None),
+    )
+    monkeypatch.setattr(qr, "_cached_client", lambda: client)
+    monkeypatch.setattr(
+        qr, "get_rag_settings", lambda: SimpleNamespace(qdrant_collection="chunks")
+    )
+    docs = qr.scroll_corpus(["hr"], 3, limit=10, tenant="api")
+    assert docs[0].metadata["tenant"] == "api"

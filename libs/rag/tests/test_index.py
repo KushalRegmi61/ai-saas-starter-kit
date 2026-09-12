@@ -69,7 +69,7 @@ def test_changed_bytes_delete_before_upsert(monkeypatch):
     order: list[str] = []
     assert isinstance(idx.delete_chunks_by_source, MagicMock)
     assert isinstance(idx.upsert_chunks, MagicMock)
-    idx.delete_chunks_by_source.side_effect = lambda _s: order.append("delete")
+    idx.delete_chunks_by_source.side_effect = lambda _s, **kw: order.append("delete")
     idx.upsert_chunks.side_effect = lambda _c, _v: (order.append("upsert"), 1)[1]
     result = idx.index_document(b"fresh content here", "notes.txt", "notes.txt")
     assert order == ["delete", "upsert"]
@@ -77,7 +77,7 @@ def test_changed_bytes_delete_before_upsert(monkeypatch):
     assert result.chunks_indexed == 1
     assert result.sources == ["notes.txt"]
     idx.ensure_collection.assert_called_once()
-    idx.flush_cache.assert_called_once_with(conn)
+    idx.flush_cache.assert_called_once_with(conn, tenant="default")
 
 
 def test_explicit_metadata_beats_inference(monkeypatch):

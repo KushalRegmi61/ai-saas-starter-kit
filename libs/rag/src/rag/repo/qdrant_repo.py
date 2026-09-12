@@ -25,8 +25,8 @@ def _cached_client():
     return _client()
 
 
-def _chunk_id(source: str, chunk_index: int, text: str) -> str:
-    raw = f"{source}:{chunk_index}:{text}"
+def _chunk_id(source: str, chunk_index: int, text: str, tenant: str = "default") -> str:
+    raw = f"{tenant}:{source}:{chunk_index}:{text}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -89,9 +89,10 @@ def upsert_chunks(chunks: list[object], vectors: list[list[float]]) -> int:
         meta = chunk.metadata
         source = str(meta.get("source", "unknown"))
         chunk_index = int(meta.get("chunk_index") or 0)
+        tn = str(meta.get("tenant", "default"))
         points.append(
             PointStruct(
-                id=_chunk_id(source, chunk_index, chunk.text),
+                id=_chunk_id(source, chunk_index, chunk.text, tenant=tn),
                 vector=vector,
                 payload={
                     "text": chunk.text,
@@ -100,6 +101,7 @@ def upsert_chunks(chunks: list[object], vectors: list[list[float]]) -> int:
                     "chunk_index": chunk_index,
                     "department": meta.get("department", "general"),
                     "access_level": meta.get("access_level", "internal"),
+                    "tenant": tn,
                 },
             )
         )
@@ -167,6 +169,7 @@ def semantic_search(
                         "chunk_index": payload.get("chunk_index"),
                         "department": payload.get("department", "general"),
                         "access_level": payload.get("access_level", "internal"),
+                        "tenant": payload.get("tenant", "default"),
                     },
                 ),
                 float(p.score or 0.0),
@@ -207,6 +210,7 @@ def scroll_corpus(
                 "chunk_index": payload.get("chunk_index"),
                 "department": payload.get("department", "general"),
                 "access_level": payload.get("access_level", "internal"),
+                "tenant": payload.get("tenant", "default"),
             }
             if passes_access_filter(meta, departments, max_access_level, tenant):
                 docs.append(SimpleDoc(text=str(payload.get("text", "")), metadata=meta))
