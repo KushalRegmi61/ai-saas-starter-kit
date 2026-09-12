@@ -58,6 +58,7 @@ Nitpicks surfaced by the verify pass on the file surface (logged, not blocking; 
 | `api-client.ts` hand-synced to FastAPI | Endpoint drift between client and server | Note an OpenAPI codegen strategy or link the spec | Low |
 | No dedicated connection-status banner | Offline only surfaced reactively per failed query | Add a global connectivity banner (route + global error boundaries already exist) | Low |
 | Settings page is a non-persisting preview & Danger Zone "Empty bucket" is disabled | Users can't save preferences or empty the bucket from the UI — both are marked "preview"/"not available in this starter" (no misleading fake-success) rather than wired | Persist preferences (a `settings` table or `profiles` columns) + implement a prefix-scoped bucket-empty behind a typed confirm | Low |
+| Isolate failure further: `search_rag` permissive default filter + global cache flush | A no-filter call searches `departments=["all"]` @ level 0; any ingest flushes every tenant's cache rows | Make `access_filter` required (breaking: update all hosts) and default `flush_cache` to the calling tenant | Low |
 
 ## Resolved
 
