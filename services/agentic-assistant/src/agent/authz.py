@@ -86,6 +86,13 @@ def require_jwt_admin(
     return require_admin(get_claims(credentials))
 
 
+def require_jwt_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> AssistantClaims:
+    """Require any valid assistant JWT; service tokens are never accepted."""
+    return get_claims(credentials)
+
+
 def require_service_or_admin(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> AssistantClaims | None:

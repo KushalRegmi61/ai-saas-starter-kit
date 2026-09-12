@@ -1,4 +1,4 @@
-"""Agentic-assistant service entrypoint: ingest/purge HTTP + health.
+"""Agentic-assistant service entrypoint: ingestion, auth, and chat.
 
 Retrieval stays inside the agent graph (tool-only, no route). The mutation
 surface serves machine callers on the service token plus browser callers on
@@ -13,7 +13,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent.config import get_agent_settings
-from api import auth, health, ingest
+from api import auth, chat, health, ingest
+from models.conversations import ensure_conversation_tables
 from models.users import ensure_and_seed, get_pool
 
 logging.basicConfig(level=logging.INFO, stream=sys.stderr)
@@ -40,6 +41,7 @@ async def lifespan(app: FastAPI):
                     settings.agentic_assistant_admin_email,
                     settings.agentic_assistant_admin_password,
                 )
+                ensure_conversation_tables(connection)
             if settings.agentic_assistant_admin_email:
                 logger.info(
                     "Assistant admin bootstrap checked for email=%s",
@@ -81,3 +83,4 @@ app.add_middleware(
 app.include_router(health.router, tags=["health"])
 app.include_router(ingest.router, tags=["ingest"])
 app.include_router(auth.router, tags=["auth"])
+app.include_router(chat.router, tags=["chat"])

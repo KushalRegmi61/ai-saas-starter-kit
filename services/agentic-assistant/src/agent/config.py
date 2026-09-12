@@ -47,6 +47,18 @@ class AgentSettings(BaseSettings):
         gt=0,
         validation_alias="AGENTIC_ASSISTANT_JWT_TTL_SECONDS",
     )
+    max_history_turns: int = Field(
+        default=6, gt=0, validation_alias="AGENTIC_ASSISTANT_MAX_HISTORY_TURNS"
+    )
+    memory_max_tokens: int = Field(
+        default=2048, gt=0, validation_alias="AGENTIC_ASSISTANT_MEMORY_MAX_TOKENS"
+    )
+    memory_summary_max_tokens: int = Field(
+        default=768, gt=0, validation_alias="AGENTIC_ASSISTANT_MEMORY_SUMMARY_MAX_TOKENS"
+    )
+    ws_ticket_ttl_seconds: int = Field(
+        default=60, gt=0, validation_alias="AGENTIC_ASSISTANT_WS_TICKET_TTL_SECONDS"
+    )
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

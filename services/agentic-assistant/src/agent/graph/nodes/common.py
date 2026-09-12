@@ -6,6 +6,7 @@ here; tests patch `agent.graph.nodes.common._chat_model` to fake the LLM.
 
 from __future__ import annotations
 
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from rag.types import SearchResult, Source
 
@@ -66,6 +67,44 @@ def _format_history(history: list[dict]) -> str:
         role = "User" if turn["role"] == "user" else "Assistant"
         lines.append(f"{role}: {turn['content']}")
     return "\n".join(lines)
+
+
+def _format_memory_summary(summary: str) -> str:
+    if not summary:
+        return ""
+    return f"Rolling conversation summary:\n{summary}"
+
+
+def _generation_messages(state) -> list:
+    """Build the shared generation prompt for sync and streaming workflows."""
+    context = _format_context(state["results"])
+    history_block = _format_history(state.get("conversation_history", []))
+    summary_block = _format_memory_summary(state.get("memory_summary", ""))
+    system_content = (
+        "You are a project knowledge assistant.\n"
+        "Answer only from the provided context. If the context does not contain the "
+        "answer, say you do not know.\n"
+        "Include concise citations using the source names from the context.\n"
+        "When conversation memory is provided, maintain continuity — refer back to "
+        "prior answers when relevant, but never invent facts not in the context."
+    )
+    memory_blocks = [block for block in (summary_block, history_block) if block]
+    if memory_blocks:
+        system_content += "\n\n" + "\n\n".join(memory_blocks)
+    return [
+        SystemMessage(content=system_content),
+        HumanMessage(content=f"Question: {state['active_question']}\n\nContext:\n{context}"),
+    ]
+
+
+def _content_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            item.get("text", "") if isinstance(item, dict) else str(item) for item in content
+        )
+    return str(content)
 
 
 def sources_from_state(state) -> list[Source]:

@@ -23,8 +23,8 @@
     "test:shared": "cd services/shared && ../../.venv/bin/python -m pytest",
     "test:worker": "cd services/worker && ../../.venv/bin/python -m pytest",
     "test:rag": "cd libs/rag && ../../.venv/bin/python -m pytest",
-    "test:agent": "cd services/agentic-assistant && ../../.venv/bin/python -m pytest",
-    "test:auth": "cd libs/auth && ../../.venv/bin/python -m pytest",
+    "test:agent": "cd services/agentic-assistant && uv run python -m pytest",
+    "test:auth": "cd libs/auth && uv run python -m pytest",
     "check:structure": "cd services/api && ../../.venv/bin/python -m pytest tests/test_structure.py -v",
     "test:e2e": "pnpm --filter @ai-saas-starter-kit/web exec playwright test"
   },

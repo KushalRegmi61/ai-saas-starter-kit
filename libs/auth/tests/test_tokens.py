@@ -5,9 +5,12 @@ from jose import jwt
 from auth.tokens import (
     ASSISTANT_TOKEN_ISSUER,
     DEFAULT_TOKEN_TTL_SECONDS,
+    DEFAULT_WS_TICKET_TTL_SECONDS,
     InvalidToken,
     decode_assistant_token,
+    decode_assistant_ws_ticket,
     mint_assistant_token,
+    mint_assistant_ws_ticket,
 )
 
 SECRET = "test-secret-for-assistant-tokens"
@@ -77,3 +80,29 @@ def test_missing_role_rejected():
     except InvalidToken:
         return
     raise AssertionError("expected InvalidToken")
+
+
+def test_websocket_ticket_round_trip_and_ttl():
+    token = mint_assistant_ws_ticket(user_id="u-1", role="manager", secret=SECRET, ttl_seconds=30)
+    claims = decode_assistant_ws_ticket(token, secret=SECRET)
+    assert (claims.subject, claims.role) == ("u-1", "manager")
+    assert claims.expires_at - claims.issued_at == 30
+    assert DEFAULT_WS_TICKET_TTL_SECONDS == 60
+
+
+def test_websocket_ticket_cannot_authorize_normal_routes():
+    token = mint_assistant_ws_ticket(user_id="u-1", role="employee", secret=SECRET)
+    try:
+        decode_assistant_token(token, secret=SECRET)
+    except InvalidToken:
+        return
+    raise AssertionError("WebSocket tickets must not decode as assistant access tokens")
+
+
+def test_normal_token_cannot_authorize_websocket():
+    token = mint_assistant_token(user_id="u-1", role="employee", secret=SECRET)
+    try:
+        decode_assistant_ws_ticket(token, secret=SECRET)
+    except InvalidToken:
+        return
+    raise AssertionError("normal assistant tokens must not decode as WebSocket tickets")

@@ -14,6 +14,7 @@ def rewrite_query(state: AgentState) -> AgentState:
     settings = get_agent_settings()
     llm = common._chat_model()
     history_block = common._format_history(state.get("conversation_history", []))
+    summary_block = common._format_memory_summary(state.get("memory_summary", ""))
     system_prompt = (
         "You are a query rewriter for a project knowledge assistant.\n"
         "Rewrite the user's question into a self-contained search query that can be "
@@ -22,8 +23,9 @@ def rewrite_query(state: AgentState) -> AgentState:
         "conversation history below.\n"
         "Return only the rewritten query, nothing else."
     )
-    if history_block:
-        system_prompt += f"\n\nConversation so far:\n{history_block}"
+    memory_blocks = [block for block in (summary_block, history_block) if block]
+    if memory_blocks:
+        system_prompt += "\n\n" + "\n\n".join(memory_blocks)
     response = llm.invoke(
         [
             SystemMessage(content=system_prompt),

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import Literal
 
-from auth.tokens import mint_assistant_token
+from auth.tokens import mint_assistant_token, mint_assistant_ws_ticket
 from auth.types import AssistantClaims, AssistantUser, CreateUserRequest, LoginRequest
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from psycopg.errors import UniqueViolation
 from psycopg_pool import ConnectionPool
 from pydantic import BaseModel, Field
 
-from agent.authz import require_jwt_admin
+from agent.authz import require_jwt_admin, require_jwt_user
 from agent.config import get_agent_settings
 from models import users
 
@@ -23,6 +23,12 @@ class LoginResponse(BaseModel):
     token_type: Literal["bearer"] = "bearer"
     expires_in: int
     user: AssistantUser
+
+
+class WebSocketTicketResponse(BaseModel):
+    access_token: str
+    token_type: Literal["ws-ticket"] = "ws-ticket"
+    expires_in: int
 
 
 class RoleUpdateRequest(BaseModel):
@@ -76,6 +82,24 @@ def login(payload: LoginRequest, pool: ConnectionPool = Depends(get_user_pool)) 
         access_token=token,
         expires_in=settings.agentic_assistant_jwt_ttl_seconds,
         user=user,
+    )
+
+
+@router.post("/ws-ticket", response_model=WebSocketTicketResponse)
+def websocket_ticket(
+    _pool: ConnectionPool = Depends(get_user_pool),
+    claims: AssistantClaims = Depends(require_jwt_user),
+) -> WebSocketTicketResponse:
+    secret = _require_jwt_secret()
+    settings = get_agent_settings()
+    return WebSocketTicketResponse(
+        access_token=mint_assistant_ws_ticket(
+            user_id=claims.subject,
+            role=claims.role,
+            secret=secret,
+            ttl_seconds=settings.ws_ticket_ttl_seconds,
+        ),
+        expires_in=settings.ws_ticket_ttl_seconds,
     )
 
 

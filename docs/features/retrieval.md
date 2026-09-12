@@ -6,7 +6,12 @@ Single-tool RAG retrieval over Qdrant vectors + Neon registry/cache.
 ## Contract
 
 - Public surface: `rag.retrieval.search_rag(question, top_k, search_mode, access_filter) -> SearchResponse` (re-exported as `rag.search_rag`). Only entrypoint; router, RRF, reranker, cache, and RBAC are internal.
-- HTTP: none on the API — search is an agent-internal tool (`search_knowledge_base` in `services/agentic-assistant`, bound to the host-resolved `AccessFilter`). The old `POST /retrieval/search` route was removed with the API's RAG logic (2026-09-12).
+- HTTP: the RAG library remains HTTP-agnostic. The agentic-assistant exposes
+  authenticated `WS /ask` for persistent streamed chat and
+  `GET /conversations/{id}` for owned history; its internal
+  `search_knowledge_base` tool remains bound to the host-resolved
+  `AccessFilter`. The old `POST /retrieval/search` route was removed with the
+  API's RAG logic (2026-09-12).
 - Phases: retrieval now; direct ingestion (`rag/ingestion/index_document`) later; `services/auth` extraction later. No S3, no Lambda triggers in this package.
 
 ## Pipeline
@@ -19,7 +24,7 @@ Caller passes `AccessFilter(departments, max_access_level)`; rag only enforces. 
 
 ## Configuration
 
-`QDRANT_URL/QDRANT_API_KEY/QDRANT_COLLECTION`, `AGENTIC_ASSISTANT_DATABASE_URL` (Neon + pgvector), `OPENAI_API_KEY/BASE_URL`, `AGENTIC_ASSISTANT_JWT_SECRET/ALGORITHM`, `AGENTIC_ASSISTANT_RATE_LIMIT_*`. Unconfigured → `503`. Rate limit is a fixed-window counter in Neon; skipped when no DB URL (local dev).
+`QDRANT_URL/QDRANT_API_KEY/QDRANT_COLLECTION`, `AGENTIC_ASSISTANT_DATABASE_URL` (Neon + pgvector), `OPENAI_API_KEY/BASE_URL`, `AGENTIC_ASSISTANT_JWT_SECRET`, and the agentic-assistant memory/WebSocket settings. Unconfigured → `503`. The chat socket requires a short-lived assistant WebSocket ticket and stores conversation turns in the same Neon database.
 
 ## Tests
 

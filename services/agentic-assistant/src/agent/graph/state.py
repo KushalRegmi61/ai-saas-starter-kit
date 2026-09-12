@@ -12,6 +12,7 @@ class AgentState(TypedDict):
     search_mode: SearchMode
     access_filter: AccessFilter | None
     conversation_history: list[dict]  # [{"role": "user"|"assistant", "content": "..."}]
+    memory_summary: str
     attempts: int
     results: list[SearchResult]
     answer: str

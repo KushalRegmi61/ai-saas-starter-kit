@@ -3,7 +3,7 @@
 from contextlib import contextmanager
 
 import pytest
-from auth.tokens import decode_assistant_token, mint_assistant_token
+from auth.tokens import decode_assistant_token, decode_assistant_ws_ticket, mint_assistant_token
 from fastapi.testclient import TestClient
 from psycopg.errors import UniqueViolation
 
@@ -91,6 +91,22 @@ def test_login_requires_jwt_secret(client, monkeypatch):
     )
 
     assert response.status_code == 503
+
+
+def test_websocket_ticket_requires_user_jwt_and_is_short_lived(client):
+    response = client.post("/auth/ws-ticket", headers=_headers(role="manager"))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["token_type"] == "ws-ticket"
+    assert body["expires_in"] == 60
+    claims = decode_assistant_ws_ticket(body["access_token"], secret=SECRET)
+    assert (claims.subject, claims.role) == ("admin-1", "manager")
+
+    service_response = client.post(
+        "/auth/ws-ticket", headers={"Authorization": "Bearer service-token"}
+    )
+    assert service_response.status_code == 401
 
 
 def test_missing_database_returns_503(monkeypatch):

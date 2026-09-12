@@ -9,7 +9,8 @@ Supabase `profiles.role` (`user|admin`) is a separate system and is untouched.
 
 - Public surface: `auth/__init__.py` re-exports `types`, `crypto`
   (`hash_password`/`verify_password`), `tokens` (`mint_assistant_token` /
-  `decode_assistant_token`), `store` (Neon `assistant_users` + audit CRUD),
+  `decode_assistant_token`, `mint_assistant_ws_ticket` /
+  `decode_assistant_ws_ticket`), `store` (Neon `assistant_users` + audit CRUD),
   `mapping` (`role_to_filter`).
 - The lib is stateless: no FastAPI, no pool, no settings. Secrets/TTLs are
   explicit params; store functions take the caller's DB connection.
@@ -40,6 +41,10 @@ services can attach service-specific claims without lib changes.
 JWT `sub/role/exp/iat/iss` (`iss=assistant-auth`, HS256), default TTL 12h.
 Passwords are bcrypt-hashed; over-72-byte passwords are rejected rather than
 silently truncated.
+
+WebSocket tickets use the same verified subject and role but carry a dedicated
+token type and default to a 60-second TTL. Normal assistant JWT routes reject
+WebSocket tickets, and WebSocket authentication rejects normal assistant JWTs.
 
 ## Tests
 
@@ -76,14 +81,25 @@ The agent owns login and user administration:
 - `AGENTIC_ASSISTANT_DATABASE_URL` missing → auth routes return `503`;
   configured but unreachable → service startup fails. Partial bootstrap
   credentials fail startup.
+- `POST /auth/ws-ticket` requires any assistant JWT and returns a short-lived
+  ticket for the chat socket. Service tokens cannot mint tickets.
+- `WS /ask` authenticates with the ticket as its first frame, supports multiple
+  sequential requests, streams workflow steps and answer tokens, and emits a
+  final `done` event only after the complete exchange is persisted.
+- `GET /conversations/{id}` returns the owning user’s complete ordered turns.
+  The service retains every turn in Neon but injects only the latest six turns
+  plus a rolling, token-bounded summary into the agent prompts. Memory settings
+  use `AGENTIC_ASSISTANT_MAX_HISTORY_TURNS`,
+  `AGENTIC_ASSISTANT_MEMORY_MAX_TOKENS`,
+  `AGENTIC_ASSISTANT_MEMORY_SUMMARY_MAX_TOKENS`, and
+  `AGENTIC_ASSISTANT_WS_TICKET_TTL_SECONDS`.
 
 The service uses the `AGENTIC_ASSISTANT_*` namespace for its identity and
 service-integration settings. Tests:
 `services/agentic-assistant/tests/test_authz.py` (dual-auth matrix, ceilings,
 fail-closed cases) and `test_auth_api.py` (login/admin route contracts).
 
-Deferred: an HTTP search surface (retrieval stays tool-only;
-`claims_to_access_filter` is the seam the future caller uses), API forwarding
-of the caller's JWT, manager dashboard, per-project scoping, frontend token
-storage, password reset/change, and login rate limiting. See
+Deferred: API forwarding of the caller's JWT, manager dashboard,
+per-project scoping, frontend token storage, password reset/change, and login
+rate limiting. See
 `docs/superpowers/specs/2026-09-12-assistant-auth-lib-design.md`.

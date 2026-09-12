@@ -26,6 +26,7 @@ def ask(
     search_mode: SearchMode = "auto",
     access_filter: AccessFilter | None = None,
     conversation_history: list[dict] | None = None,
+    memory_summary: str | None = None,
 ) -> AskResponse:
     """Run the assistant workflow. Auth lives outside: pass a host-resolved filter."""
     settings = get_agent_settings()
@@ -43,6 +44,7 @@ def ask(
             "search_mode": search_mode,
             "access_filter": access_filter,
             "conversation_history": conversation_history or [],
+            "memory_summary": memory_summary or "",
             "attempts": 0,
             "results": [],
             "answer": "",

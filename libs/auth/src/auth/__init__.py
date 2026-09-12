@@ -19,9 +19,12 @@ from auth.store import (
 from auth.tokens import (
     ASSISTANT_TOKEN_ISSUER,
     DEFAULT_TOKEN_TTL_SECONDS,
+    DEFAULT_WS_TICKET_TTL_SECONDS,
     InvalidToken,
     decode_assistant_token,
+    decode_assistant_ws_ticket,
     mint_assistant_token,
+    mint_assistant_ws_ticket,
 )
 from auth.types import (
     ASSISTANT_ROLES,
@@ -39,6 +42,7 @@ __all__ = [
     "ASSISTANT_TOKEN_ISSUER",
     "DEFAULT_ROLE_POLICY",
     "DEFAULT_TOKEN_TTL_SECONDS",
+    "DEFAULT_WS_TICKET_TTL_SECONDS",
     "ROLE_LEVELS",
     "AssistantClaims",
     "AssistantUser",
@@ -50,6 +54,7 @@ __all__ = [
     "RolePolicy",
     "UnknownRole",
     "decode_assistant_token",
+    "decode_assistant_ws_ticket",
     "ensure_assistant_tables",
     "find_user_by_email",
     "find_user_by_id",
@@ -57,6 +62,7 @@ __all__ = [
     "insert_user",
     "list_users",
     "mint_assistant_token",
+    "mint_assistant_ws_ticket",
     "record_audit_event",
     "role_to_filter",
     "set_user_role",

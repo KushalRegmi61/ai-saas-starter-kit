@@ -35,6 +35,7 @@ def test_configured_pool_is_seeded_and_closed(monkeypatch):
         "ensure_and_seed",
         lambda connection, email, password: seeded.append((email, password)),
     )
+    monkeypatch.setattr(main, "ensure_conversation_tables", lambda connection: None)
 
     with TestClient(app):
         assert app.state.assistant_user_pool is pool

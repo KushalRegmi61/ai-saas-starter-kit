@@ -1,6 +1,6 @@
 # Plan: assistant authz phase 1 (agentic-assistant verifies, admin mutates)
 
-**Status: implemented 2026-09-12** (commit follows). Goal: wire `libs/auth`
+**Status: implemented 2026-09-12**. Goal: wire `libs/auth`
 into `services/agentic-assistant` so `POST /ingest` + `DELETE /sources` admit
 the machine service token **or** an admin assistant JWT, and every role gets a
 resolvable retrieval filter — while login/minting stays out of this service.
@@ -10,7 +10,8 @@ resolvable retrieval filter — while login/minting stays out of this service.
 - Dual-auth on mutations: service token OR admin JWT, either suffices.
   Browser flow after frontend login: login → `Bearer <admin JWT>` direct to
   the agent. API-forwarded auto-index (service token, no user JWT) keeps working.
-- Agent verifies only: no `/auth/*` routes, no user store, no Neon pool here.
+- Agent owns its `/auth/*` routes and user store; the original authz-only scope
+  was superseded by the completed agent-login implementation.
 - Retrieval: role-derived filters for all four roles (emp 1 / lead 2 /
   mgr+admin 3); no new HTTP search route in this phase (tool-only stays).
 
@@ -41,7 +42,5 @@ agent suite 31 passed (22 existing + 9 new).
 
 ## Follow-ups (tracked in tech-debt-tracker)
 
-1. `POST /ask` authed search route reusing `get_claims` +
-   `claims_to_access_filter` (needed for browser search).
-2. API forwards caller JWT (`ingest_client.py`) + agent logs `claims.subject`.
-3. Tighten CORS origins to the frontend domain.
+1. API forwards caller JWT (`ingest_client.py`) + agent logs `claims.subject`.
+2. Tighten CORS origins to the frontend domain.
