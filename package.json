@@ -16,11 +16,13 @@
     "lint:shared": "cd services/shared && ../api/.venv/bin/ruff check .",
     "lint:worker": "cd services/worker && ../api/.venv/bin/ruff check .",
     "lint:rag": "cd libs/rag && ../../services/api/.venv/bin/ruff check .",
+    "lint:auth": "cd libs/auth && ../../services/api/.venv/bin/ruff check .",
     "test:web": "pnpm --filter @ai-saas-starter-kit/web test",
     "test:api": "cd services/api && .venv/bin/python -m pytest",
     "test:shared": "cd services/shared && ../api/.venv/bin/python -m pytest",
     "test:worker": "cd services/worker && .venv/bin/python -m pytest",
     "test:rag": "cd libs/rag && ../../services/api/.venv/bin/python -m pytest",
+    "test:auth": "cd libs/auth && ../../services/api/.venv/bin/python -m pytest",
     "check:structure": "cd services/api && .venv/bin/python -m pytest tests/test_structure.py -v",
     "test:e2e": "pnpm --filter @ai-saas-starter-kit/web exec playwright test"
   },

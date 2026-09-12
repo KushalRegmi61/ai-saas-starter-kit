@@ -4,10 +4,12 @@
 # change. Bump these deliberately (and re-run the test suite) rather than letting
 # them float. The genblaze-* trio must stay on the same 0.3.x line
 # (genblaze-nvidia requires genblaze-core within that range).
-# Local workspace dependencies: shared primitives (services/shared) + RAG library (libs/rag).
+# Local workspace dependencies: shared primitives (services/shared) + RAG library (libs/rag) + assistant identity (libs/auth).
 # Editable path pins keep the API running against the workspace checkout.
 -e ../shared
 -e ../../libs/rag
+-e ../../libs/auth
+bcrypt==5.0.0
 fastapi==0.139.2
 uvicorn[standard]==0.51.0
 python-multipart==0.0.32
