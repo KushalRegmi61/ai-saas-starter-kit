@@ -149,6 +149,7 @@ def _maybe_index_in_rag(
             source=key,
             department=department,
             access_level=access_level,
+            tenant=settings.rag_tenant,
         )
         return True
     except ValueError:

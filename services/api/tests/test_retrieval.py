@@ -79,6 +79,7 @@ async def test_retrieval_passes_access_filter(client, monkeypatch):
         assert resp.status_code == 200
         assert seen["filter"].departments == ["hr", "all", "general"]
         assert seen["filter"].max_access_level == 1
+        assert seen["filter"].tenant == "api"
     finally:
         app.dependency_overrides.pop(rag_auth.require_rag_rate_limit, None)
 

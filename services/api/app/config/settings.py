@@ -165,6 +165,7 @@ class Settings(BaseSettings):
     rag_jwt_algorithm: str = "HS256"
     rag_rate_limit_requests: int = 60
     rag_rate_limit_window_seconds: int = 60
+    rag_tenant: str = "api"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

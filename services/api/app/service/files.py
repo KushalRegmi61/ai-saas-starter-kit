@@ -164,7 +164,7 @@ def remove_file(user_id: str, key: str) -> None:
     try:
         from rag import delete_indexed_source
 
-        delete_indexed_source(key)
+        delete_indexed_source(key, tenant=settings.rag_tenant)
     except Exception:
         logger.exception("RAG purge failed: key=%s", key)
 

@@ -59,7 +59,11 @@ def claims_to_access_filter(claims: RagTokenClaims) -> AccessFilter:
         departments = ["public", "internal", "confidential", "restricted", "all", "general"]
     else:
         departments = [claims.domain, "all", "general"]
-    return AccessFilter(departments=departments, max_access_level=claims.max_access_level)
+    return AccessFilter(
+        departments=departments,
+        max_access_level=claims.max_access_level,
+        tenant=settings.rag_tenant,
+    )
 
 
 _bearer = HTTPBearer(auto_error=False)

@@ -76,6 +76,7 @@ def test_finalize_pdf_indexes_and_reports_true(monkeypatch, rag_configured, stor
     assert args[1] == "report.pdf"  # filename
     assert seen["source"] == stored_pdf  # source == key
     assert seen["department"] == "hr"
+    assert seen["tenant"] == "api"
     assert seen["access_level"] == "internal"
 
 
@@ -204,12 +205,17 @@ def test_remove_file_purges_indexed_source(monkeypatch):
     deleted: list[str] = []
     monkeypatch.setattr(files_service, "delete_file", lambda k: deleted.append(k))
     purged: list[str] = []
-    monkeypatch.setattr(rag, "delete_indexed_source", lambda s: purged.append(s))
+    purged_tenant: list[str] = []
+    def fake_purge(source, tenant="api"):
+        purged.append(source)
+        purged_tenant.append(tenant)
+    monkeypatch.setattr(rag, "delete_indexed_source", fake_purge)
 
     files_service.remove_file(TEST_USER_ID, f"uploads/{TEST_USER_ID}/report.pdf")
 
     assert deleted == [f"uploads/{TEST_USER_ID}/report.pdf"]
     assert purged == [f"uploads/{TEST_USER_ID}/report.pdf"]
+    assert purged_tenant == ["api"]
 
 
 def test_remove_file_purge_failure_still_deletes(monkeypatch):
@@ -217,7 +223,7 @@ def test_remove_file_purge_failure_still_deletes(monkeypatch):
     monkeypatch.setattr(files_service.settings, "rag_database_url", "postgresql://rag")
     monkeypatch.setattr(files_service, "delete_file", lambda k: None)
 
-    def boom(source):
+    def boom(source, **kw):
         raise RuntimeError("qdrant down")
 
     monkeypatch.setattr(rag, "delete_indexed_source", boom)
@@ -231,7 +237,7 @@ def test_remove_file_unconfigured_skips_purge(monkeypatch):
     monkeypatch.setattr(files_service.settings, "rag_database_url", "")
     monkeypatch.setattr(files_service, "delete_file", lambda k: None)
     purged: list[str] = []
-    monkeypatch.setattr(rag, "delete_indexed_source", lambda s: purged.append(s))
+    monkeypatch.setattr(rag, "delete_indexed_source", lambda s, **kw: purged.append(s))
 
     files_service.remove_file(TEST_USER_ID, f"uploads/{TEST_USER_ID}/report.pdf")
 
