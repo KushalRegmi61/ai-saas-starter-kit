@@ -46,9 +46,24 @@ silently truncated.
 `libs/auth/tests/` (crypto, tokens incl. tamper/expiry/unknown-role,
 mapping ladder, store SQL-shape on fake connections — no live DB).
 
-## Service integration (follows)
+## Service integration (agentic-assistant, phase 1)
 
-The owning service provides the pool, `/assistant/*` routes, and FastAPI
-`require_assistant_admin`; `rag_auth.py` cuts over to lib token verify +
-`role_to_filter`. Deferred: manager dashboard, per-project scoping, agent
-chat tools. See `docs/superpowers/specs/2026-09-12-assistant-auth-lib-design.md`.
+`services/agentic-assistant/src/agent/authz.py` is the reference consumer:
+`get_claims` (assistant-JWT verify → 401), `require_admin` (`role == "admin"`
+→ 403 otherwise), `require_service_or_admin` (machine service token **or**
+admin JWT — either suffices, so API-forwarded auto-index keeps working while
+browser callers authenticate directly after frontend login), and
+`claims_to_access_filter` (`role_to_filter` → `AccessFilter`, emp 1 / lead 2 /
+mgr+admin 3). Both mutation routes (`POST /ingest`, `DELETE /sources`) use the
+dual-auth dependency; user secret is `AgentSettings.assistant_jwt_secret`
+(`ASSISTANT_JWT_SECRET`, empty = JWT path absent, fail closed). The app also
+serves CORS for the browser-direct admin flow (Bearer, no cookies; tighten
+`allow_origins` once the frontend domain is known). Tests:
+`services/agentic-assistant/tests/test_authz.py` (dual-auth matrix, ceilings,
+fail-closed cases).
+
+Deferred: login/mint endpoints (agent verifies only — identity issuance lives
+elsewhere), an HTTP search surface (retrieval stays tool-only;
+`claims_to_access_filter` is the seam the future caller uses), API forwarding
+of the caller's JWT, manager dashboard, per-project scoping. See
+`docs/superpowers/specs/2026-09-12-assistant-auth-lib-design.md`.

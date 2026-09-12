@@ -2,45 +2,26 @@
 
 Manual ingestion/deletion only — no agent tool wraps these (per product
 decision: retrieval is the tool; ingest/delete are explicit operations).
-Best-effort contract mirrors the old in-API behavior: bad content → 422,
-backend failure on purge → `{"purged": false}` (never 500 the caller).
+Auth is dual: the shared service token (machine forwarders) or an admin
+assistant JWT (browser callers after frontend login). Best-effort contract
+mirrors the old in-API behavior: bad content → 422, backend failure on
+purge → `{"purged": false}` (never 500 the caller).
 """
 
 from __future__ import annotations
 
 import logging
-import secrets
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from auth.types import AssistantClaims
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from rag.ingestion.index import delete_indexed_source, index_document
 from rag.types import IngestionResult
 
-from agent.config import get_agent_settings
+from agent.authz import require_service_or_admin
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-_bearer = HTTPBearer(auto_error=False)
-
-
-def require_service_token(
-    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
-) -> None:
-    settings = get_agent_settings()
-    if not settings.agent_service_token:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Ingestion not configured",
-        )
-    if credentials is None or not secrets.compare_digest(
-        credentials.credentials, settings.agent_service_token
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid service token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
 
 
 @router.post("/ingest", response_model=IngestionResult)
@@ -50,7 +31,7 @@ async def ingest_endpoint(
     department: str | None = Form(None),
     access_level: str | None = Form(None),
     tenant: str | None = Form(None),
-    _authed: None = Depends(require_service_token),
+    _authed: AssistantClaims | None = Depends(require_service_or_admin),
 ) -> IngestionResult:
     content = await file.read()
     try:
@@ -70,7 +51,7 @@ async def ingest_endpoint(
 def delete_source_endpoint(
     source: str,
     tenant: str | None = None,
-    _authed: None = Depends(require_service_token),
+    _authed: AssistantClaims | None = Depends(require_service_or_admin),
 ) -> dict[str, bool]:
     try:
         delete_indexed_source(source, tenant=tenant)

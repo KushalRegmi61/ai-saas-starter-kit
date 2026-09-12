@@ -24,6 +24,12 @@ class AgentSettings(BaseSettings):
     # Shared secret, mirrored as `agent_service_token` in services/api.
     # Empty = ingest routes answer 503 (fail closed, never world-open).
     agent_service_token: str = ""
+    # User-identity secret for the same routes: assistant JWTs minted by the
+    # login flow are verified with this (see agent.authz). Browser callers
+    # present `Authorization: Bearer <admin JWT>` after frontend login.
+    # Must match the minter's secret. Empty = JWT path absent; the service
+    # token path alone decides (fail closed, never accept unsigned claims).
+    assistant_jwt_secret: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
