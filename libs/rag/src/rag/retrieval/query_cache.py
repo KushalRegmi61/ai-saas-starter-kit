@@ -10,6 +10,8 @@ import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 
+from rag.retrieval.rbac import normalize_tenant
+
 SEMANTIC_THRESHOLD = 0.92
 
 
@@ -26,8 +28,10 @@ def context_hash(chunk_ids: list[str]) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
-def make_cache_key(question: str, ctx_hash: str) -> str:
-    return _hash(f"{question.strip()}|CTX:{ctx_hash}")
+def make_cache_key(question: str, ctx_hash: str, tenant: str | None = None) -> str:
+    scope = normalize_tenant(tenant) if tenant is not None else None
+    preimage = f"{question.strip()}|CTX:{ctx_hash}" if scope is None else f"{scope}|{question.strip()}|CTX:{ctx_hash}"
+    return _hash(preimage)
 
 
 def ensure_cache_table(connection, dims: int) -> None:
@@ -42,9 +46,16 @@ def ensure_cache_table(connection, dims: int) -> None:
             search_mode    TEXT,
             created_at     TIMESTAMPTZ DEFAULT NOW(),
             expires_at     TIMESTAMPTZ,
-            hit_count      INTEGER DEFAULT 0
+            hit_count      INTEGER DEFAULT 0,
+            tenant         TEXT DEFAULT 'default'
         )
         """
+    )
+    connection.execute(
+        "ALTER TABLE query_cache ADD COLUMN IF NOT EXISTS tenant TEXT DEFAULT 'default'"
+    )
+    connection.execute(
+        "UPDATE query_cache SET tenant = 'default' WHERE tenant IS NULL"
     )
     connection.execute(
         """
@@ -56,9 +67,10 @@ def ensure_cache_table(connection, dims: int) -> None:
 
 
 def get_cached_answer(
-    connection, question: str, embedding: list[float], ctx_hash: str
+    connection, question: str, embedding: list[float], ctx_hash: str,
+    tenant: str | None = None,
 ) -> dict | None:
-    question_hash = make_cache_key(question, ctx_hash)
+    question_hash = make_cache_key(question, ctx_hash, tenant=tenant)
     row = connection.execute(
         "SELECT answer_json, expires_at FROM query_cache WHERE question_hash = %s",
         (question_hash,),
@@ -80,10 +92,11 @@ def get_cached_answer(
         FROM query_cache
         WHERE (expires_at IS NULL OR expires_at > NOW())
           AND context_hash = %s
+          AND tenant = %s
         ORDER BY question_vec <=> %s::vector
         LIMIT 1
         """,
-        (vec_str, ctx_hash, vec_str),
+        (vec_str, ctx_hash, normalize_tenant(tenant), vec_str),
     ).fetchone()
     if row:
         cached_hash, answer_json, _expires_at, similarity = row
@@ -103,16 +116,17 @@ def store_cached_answer(
     answer: dict,
     search_mode: str,
     ctx_hash: str,
+    tenant: str | None = None,
     ttl_hours: int = 24,
 ) -> None:
-    question_hash = make_cache_key(question, ctx_hash)
+    question_hash = make_cache_key(question, ctx_hash, tenant=tenant)
     vec_str = "[" + ",".join(str(v) for v in embedding) + "]"
     expires_at = _now() + timedelta(hours=ttl_hours)
     connection.execute(
         """
         INSERT INTO query_cache
-            (question_hash, question_text, context_hash, question_vec, answer_json, search_mode, expires_at)
-        VALUES (%s, %s, %s, %s::vector, %s, %s, %s)
+            (question_hash, question_text, context_hash, question_vec, answer_json, search_mode, expires_at, tenant)
+        VALUES (%s, %s, %s, %s::vector, %s, %s, %s, %s)
         ON CONFLICT (question_hash) DO UPDATE SET
             answer_json  = EXCLUDED.answer_json,
             search_mode  = EXCLUDED.search_mode,
@@ -127,16 +141,32 @@ def store_cached_answer(
             json.dumps(answer),
             search_mode,
             expires_at,
+            normalize_tenant(tenant),
         ),
     )
 
 
-def flush_cache(connection, expired_only: bool = False) -> int:
+def flush_cache(
+    connection, expired_only: bool = False, tenant: str | None = None
+) -> int:
     """Delete cache entries. Returns count of rows deleted."""
-    if expired_only:
-        result = connection.execute(
-            "DELETE FROM query_cache WHERE expires_at IS NOT NULL AND expires_at <= NOW()"
-        )
+    if tenant is None:
+        if expired_only:
+            result = connection.execute(
+                "DELETE FROM query_cache WHERE expires_at IS NOT NULL AND expires_at <= NOW()"
+            )
+        else:
+            result = connection.execute("DELETE FROM query_cache")
     else:
-        result = connection.execute("DELETE FROM query_cache")
+        scope = normalize_tenant(tenant)
+        if expired_only:
+            result = connection.execute(
+                "DELETE FROM query_cache WHERE tenant = %s AND expires_at IS NOT NULL AND expires_at <= NOW()",
+                (scope,),
+            )
+        else:
+            result = connection.execute(
+                "DELETE FROM query_cache WHERE tenant = %s",
+                (scope,),
+            )
     return result.rowcount

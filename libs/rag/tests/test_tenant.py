@@ -29,6 +29,7 @@ class FakeConn:
     def __init__(self, fetchone=None):
         self.executed = []
         self._fetchone = fetchone
+        self.rowcount = 0
 
     def execute(self, sql, params=None):
         self.executed.append((sql, params))
@@ -229,3 +230,32 @@ def test_delete_chunks_by_source_scopes_to_tenant(monkeypatch):
 
     qdrant_repo.delete_chunks_by_source("s")
     assert [c.key for c in seen["filter"].must] == ["source"]
+
+
+def test_cache_key_is_tenant_scoped():
+    from rag.retrieval.query_cache import make_cache_key
+
+    assert make_cache_key("hi", "ctx") == make_cache_key("hi", "ctx")
+    assert make_cache_key("hi", "ctx", tenant="api") != make_cache_key("hi", "ctx")
+    assert make_cache_key("hi", "ctx", tenant="api") == make_cache_key("hi", "ctx", tenant="api")
+    assert make_cache_key("hi", "ctx", tenant=None) == make_cache_key("hi", "ctx")
+
+
+def test_semantic_lookup_filters_by_tenant():
+    from rag.retrieval import query_cache
+
+    conn = FakeConn()
+    query_cache.get_cached_answer(conn, "hi", [0.0] * 4, "ctx", tenant="api")
+    tier2_sql = conn.executed[-1][0]
+    assert "tenant = %s" in tier2_sql
+    assert "api" in conn.executed[-1][1]
+
+
+def test_flush_cache_scopes_to_tenant():
+    from rag.retrieval import query_cache
+
+    conn = FakeConn()
+    query_cache.flush_cache(conn, tenant="api")
+    assert "tenant = %s" in conn.executed[-1][0]
+    query_cache.flush_cache(conn)
+    assert conn.executed[-1][0] == "DELETE FROM query_cache"

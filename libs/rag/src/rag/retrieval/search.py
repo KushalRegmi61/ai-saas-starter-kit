@@ -64,7 +64,7 @@ def search_rag(
     ]
     ctx_hash = query_cache.context_hash(chunk_ids)
 
-    cached_response = _cache_get(question, query_vector, ctx_hash, resolved_mode)
+    cached_response = _cache_get(question, query_vector, ctx_hash, resolved_mode, filt.tenant)
     if cached_response is not None:
         return cached_response
 
@@ -73,17 +73,18 @@ def search_rag(
         for d, score in ranked
     ]
     response = SearchResponse(question=question, results=results, search_mode=resolved_mode)
-    _cache_put(question, query_vector, response, resolved_mode, ctx_hash)
+    _cache_put(question, query_vector, response, resolved_mode, ctx_hash, filt.tenant)
     return response
 
 
 def _cache_get(
-    question: str, embedding: list[float], ctx_hash: str, resolved_mode: str
+    question: str, embedding: list[float], ctx_hash: str, resolved_mode: str,
+    tenant: str | None = None,
 ) -> SearchResponse | None:
     try:
         with neon_repo.get_conn() as conn:
             neon_repo.ensure_tables(conn)
-            hit = query_cache.get_cached_answer(conn, question, embedding, ctx_hash)
+            hit = query_cache.get_cached_answer(conn, question, embedding, ctx_hash, tenant=tenant)
         if hit is None:
             return None
         return SearchResponse(**hit)
@@ -98,6 +99,7 @@ def _cache_put(
     response: SearchResponse,
     resolved_mode: str,
     ctx_hash: str,
+    tenant: str | None = None,
 ) -> None:
     try:
         settings = get_rag_settings()
@@ -110,6 +112,7 @@ def _cache_put(
                 answer=response.model_dump(),
                 search_mode=resolved_mode,
                 ctx_hash=ctx_hash,
+                tenant=tenant,
                 ttl_hours=int(settings.cache_ttl_hours),
             )
             conn.commit()
