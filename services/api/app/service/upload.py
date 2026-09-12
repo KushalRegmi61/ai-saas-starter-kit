@@ -120,7 +120,9 @@ class UploadError(Exception):
 VALID_DEPARTMENTS = {"hr", "security", "product", "finance", "general"}
 VALID_ACCESS_LEVELS = {"public", "internal", "confidential", "restricted"}
 
-# Types eligible for RAG auto-indexing; others finalize with rag_indexed=False.
+# Types eligible for ingest forwarding; others finalize with rag_indexed=False
+# (the agent service decides indexability itself — this gate only avoids
+# POSTing bytes that can never index, e.g. images and archives).
 RAG_INDEXABLE_TYPES: dict[str, set[str]] = {
     "application/pdf": {".pdf"},
     "text/plain": {".txt", ".md"},
@@ -134,16 +136,15 @@ def _maybe_index_in_rag(
     department: str | None,
     access_level: str | None,
 ) -> bool:
-    """Best-effort RAG auto-index of a finalized upload; never raises."""
+    """Best-effort forward of a finalized upload to the agentic-assistant
+    ingest surface; never raises."""
     if content_type not in RAG_INDEXABLE_TYPES:
-        return False
-    if not (settings.qdrant_url and settings.agentic_assistant_database_url):
         return False
     try:
         content = get_object_bytes(key)
-        from rag import index_document
+        from app.repo import ingest_client
 
-        index_document(
+        return ingest_client.index_document_remote(
             content,
             filename,
             source=key,
@@ -151,9 +152,6 @@ def _maybe_index_in_rag(
             access_level=access_level,
             tenant=settings.agentic_assistant_tenant,
         )
-        return True
-    except ValueError:
-        return False
     except Exception:
         logger.exception("RAG auto-index failed: key=%s", key)
         return False

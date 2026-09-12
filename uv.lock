@@ -37,6 +37,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
+    { name = "python-multipart" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -62,6 +63,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pydantic-settings", specifier = ">=2.14.2" },
     { name = "python-dotenv", specifier = ">=1.2.3" },
+    { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.51.0" },
 ]
 
@@ -78,7 +80,6 @@ version = "0.1.0"
 source = { editable = "services/api" }
 dependencies = [
     { name = "ai-saas-auth" },
-    { name = "ai-saas-rag" },
     { name = "ai-saas-shared" },
     { name = "bcrypt" },
     { name = "boto3" },
@@ -107,7 +108,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "ai-saas-auth", editable = "libs/auth" },
-    { name = "ai-saas-rag", editable = "libs/rag" },
     { name = "ai-saas-shared", editable = "services/shared" },
     { name = "bcrypt", specifier = ">=5.0.0" },
     { name = "boto3", specifier = ">=1.43.52" },

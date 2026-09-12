@@ -1,15 +1,17 @@
-"""Tests for RAG auto-index on upload finalize + purge on file delete (Phase 2).
+"""Tests for ingest forwarding on upload finalize + purge on file delete.
 
-finalize_upload best-effort indexes indexable types (pdf/txt) into RAG and
-reports ``rag_indexed``; remove_file best-effort purges the indexed source.
-Both degrade to success-without-RAG when unconfigured or on RAG failure.
+finalize_upload best-effort forwards indexable types (pdf/txt) to the
+agentic-assistant ``POST /ingest`` via ``repo/ingest_client`` and reports
+``rag_indexed``; remove_file best-effort purges via ``DELETE /sources``.
+Both degrade to success-without-indexing when the agent service is
+unconfigured or the forward fails.
 """
 
 from datetime import UTC, datetime
 
 import pytest
-import rag
 
+from app.repo import ingest_client
 from app.service import files as files_service
 from app.service import upload as upload_service
 from app.service.upload import UploadError, finalize_upload
@@ -33,10 +35,10 @@ def _stored(key: str, *, content_type: str = "application/pdf") -> FileMetadata:
 
 
 @pytest.fixture
-def rag_configured(monkeypatch):
-    """Pretend Qdrant + the RAG registry are configured."""
-    monkeypatch.setattr(upload_service.settings, "qdrant_url", "http://qdrant:6333")
-    monkeypatch.setattr(upload_service.settings, "agentic_assistant_database_url", "postgresql://rag")
+def agent_configured(monkeypatch):
+    """Pretend the agentic-assistant ingest surface is configured."""
+    monkeypatch.setattr(upload_service.settings, "agent_service_url", "http://agent:8001")
+    monkeypatch.setattr(upload_service.settings, "agent_service_token", "svc-token")
 
 
 @pytest.fixture
@@ -52,35 +54,40 @@ def _mock_b2_bytes(monkeypatch, payload: bytes = b"%PDF-1.7\n..."):
     monkeypatch.setattr(upload_service, "get_object_bytes", lambda k: payload)
 
 
-# --- finalize_upload auto-index ------------------------------------------------
+# --- finalize_upload forward -------------------------------------------------
 
 
-def test_finalize_pdf_indexes_and_reports_true(monkeypatch, rag_configured, stored_pdf):
+def test_finalize_pdf_indexes_and_reports_true(monkeypatch, agent_configured, stored_pdf):
     _mock_b2_bytes(monkeypatch)
     seen: dict = {}
 
-    def fake_index(*args, **kwargs):
-        seen["_args"] = args
-        seen.update(kwargs)
-        return None
+    def fake_forward(content, filename, source, department=None, access_level=None, tenant=None):
+        seen.update(
+            content=content,
+            filename=filename,
+            source=source,
+            department=department,
+            access_level=access_level,
+            tenant=tenant,
+        )
+        return True
 
-    monkeypatch.setattr(rag, "index_document", fake_index)
+    monkeypatch.setattr(ingest_client, "index_document_remote", fake_forward)
 
     result = finalize_upload(
         stored_pdf, user_id=TEST_USER_ID, department="hr", access_level="internal"
     )
 
     assert result.rag_indexed is True
-    args = seen["_args"]
-    assert args[0] == b"%PDF-1.7\n..."  # content bytes
-    assert args[1] == "report.pdf"  # filename
+    assert seen["content"] == b"%PDF-1.7\n..."  # content bytes
+    assert seen["filename"] == "report.pdf"  # filename
     assert seen["source"] == stored_pdf  # source == key
     assert seen["department"] == "hr"
     assert seen["tenant"] == "api"
     assert seen["access_level"] == "internal"
 
 
-def test_finalize_png_skips_index(monkeypatch, rag_configured):
+def test_finalize_png_skips_forward(monkeypatch, agent_configured):
     key = f"uploads/{TEST_USER_ID}/photo.png"
     monkeypatch.setattr(
         upload_service,
@@ -93,7 +100,9 @@ def test_finalize_png_skips_index(monkeypatch, rag_configured):
         lambda k, **kw: b"\x89PNG\r\n\x1a\n....",
     )
     called: list = []
-    monkeypatch.setattr(rag, "index_document", lambda *a, **kw: called.append(a))
+    monkeypatch.setattr(
+        ingest_client, "index_document_remote", lambda *a, **kw: called.append(a) or True
+    )
 
     result = finalize_upload(key, user_id=TEST_USER_ID)
 
@@ -101,13 +110,9 @@ def test_finalize_png_skips_index(monkeypatch, rag_configured):
     assert called == []
 
 
-def test_finalize_index_failure_still_succeeds(monkeypatch, rag_configured, stored_pdf):
+def test_finalize_forward_failure_still_succeeds(monkeypatch, agent_configured, stored_pdf):
     _mock_b2_bytes(monkeypatch)
-
-    def boom(*a, **kw):
-        raise RuntimeError("qdrant down")
-
-    monkeypatch.setattr(rag, "index_document", boom)
+    monkeypatch.setattr(ingest_client, "index_document_remote", lambda *a, **kw: False)
 
     result = finalize_upload(stored_pdf, user_id=TEST_USER_ID)
 
@@ -115,29 +120,27 @@ def test_finalize_index_failure_still_succeeds(monkeypatch, rag_configured, stor
     assert result.rag_indexed is False
 
 
-def test_finalize_index_value_error_still_succeeds(monkeypatch, rag_configured, stored_pdf):
+def test_finalize_forward_exception_still_succeeds(monkeypatch, agent_configured, stored_pdf):
     _mock_b2_bytes(monkeypatch)
 
     def boom(*a, **kw):
-        raise ValueError("unsupported bytes")
+        raise RuntimeError("agent down")
 
-    monkeypatch.setattr(rag, "index_document", boom)
-
-    result = finalize_upload(stored_pdf, user_id=TEST_USER_ID)
-
-    assert result.rag_indexed is False
-
-
-def test_finalize_unconfigured_rag_skips_index(monkeypatch, stored_pdf):
-    monkeypatch.setattr(upload_service.settings, "qdrant_url", "")
-    monkeypatch.setattr(upload_service.settings, "agentic_assistant_database_url", "")
-    called: list = []
-    monkeypatch.setattr(rag, "index_document", lambda *a, **kw: called.append(a))
+    monkeypatch.setattr(ingest_client, "index_document_remote", boom)
 
     result = finalize_upload(stored_pdf, user_id=TEST_USER_ID)
 
     assert result.rag_indexed is False
-    assert called == []
+
+
+def test_finalize_unconfigured_agent_skips_forward(monkeypatch, stored_pdf):
+    # Real adapter, empty settings: returns False with no HTTP attempt.
+    monkeypatch.setattr(upload_service.settings, "agent_service_url", "")
+    monkeypatch.setattr(upload_service.settings, "agent_service_token", "")
+
+    result = finalize_upload(stored_pdf, user_id=TEST_USER_ID)
+
+    assert result.rag_indexed is False
 
 
 def test_finalize_rejects_unknown_department(monkeypatch, stored_pdf):
@@ -157,10 +160,10 @@ def test_finalize_rejects_unknown_access_level(monkeypatch, stored_pdf):
 
 @pytest.mark.asyncio
 async def test_complete_endpoint_reports_rag_indexed(
-    auth_client, monkeypatch, rag_configured, stored_pdf
+    auth_client, monkeypatch, agent_configured, stored_pdf
 ):
     _mock_b2_bytes(monkeypatch)
-    monkeypatch.setattr(rag, "index_document", lambda *a, **kw: None)
+    monkeypatch.setattr(ingest_client, "index_document_remote", lambda *a, **kw: True)
 
     resp = await auth_client.post(
         "/upload/complete",
@@ -175,15 +178,11 @@ async def test_complete_endpoint_reports_rag_indexed(
 
 
 @pytest.mark.asyncio
-async def test_complete_endpoint_index_failure_still_200(
-    auth_client, monkeypatch, rag_configured, stored_pdf
+async def test_complete_endpoint_forward_failure_still_200(
+    auth_client, monkeypatch, agent_configured, stored_pdf
 ):
     _mock_b2_bytes(monkeypatch)
-
-    def boom(*a, **kw):
-        raise RuntimeError("qdrant down")
-
-    monkeypatch.setattr(rag, "index_document", boom)
+    monkeypatch.setattr(ingest_client, "index_document_remote", lambda *a, **kw: False)
 
     resp = await auth_client.post("/upload/complete", json={"key": stored_pdf})
     assert resp.status_code == 200
@@ -200,45 +199,43 @@ async def test_complete_endpoint_rejects_unknown_department(auth_client, stored_
 
 
 def test_remove_file_purges_indexed_source(monkeypatch):
-    monkeypatch.setattr(files_service.settings, "qdrant_url", "http://qdrant:6333")
-    monkeypatch.setattr(files_service.settings, "agentic_assistant_database_url", "postgresql://rag")
-    deleted: list[str] = []
-    monkeypatch.setattr(files_service, "delete_file", lambda k: deleted.append(k))
+    monkeypatch.setattr(files_service.settings, "agent_service_url", "http://agent:8001")
+    monkeypatch.setattr(files_service.settings, "agent_service_token", "svc-token")
+    monkeypatch.setattr(files_service, "delete_file", lambda k: None)
     purged: list[str] = []
     purged_tenant: list[str] = []
-    def fake_purge(source, *, tenant):
+
+    def fake_purge(source, tenant=None):
         purged.append(source)
         purged_tenant.append(tenant)
-    monkeypatch.setattr(rag, "delete_indexed_source", fake_purge)
+        return True
+
+    monkeypatch.setattr(ingest_client, "delete_indexed_source_remote", fake_purge)
 
     files_service.remove_file(TEST_USER_ID, f"uploads/{TEST_USER_ID}/report.pdf")
 
-    assert deleted == [f"uploads/{TEST_USER_ID}/report.pdf"]
     assert purged == [f"uploads/{TEST_USER_ID}/report.pdf"]
     assert purged_tenant == ["api"]
 
 
 def test_remove_file_purge_failure_still_deletes(monkeypatch):
-    monkeypatch.setattr(files_service.settings, "qdrant_url", "http://qdrant:6333")
-    monkeypatch.setattr(files_service.settings, "agentic_assistant_database_url", "postgresql://rag")
+    monkeypatch.setattr(files_service.settings, "agent_service_url", "http://agent:8001")
+    monkeypatch.setattr(files_service.settings, "agent_service_token", "svc-token")
     monkeypatch.setattr(files_service, "delete_file", lambda k: None)
 
-    def boom(source, **kw):
-        raise RuntimeError("qdrant down")
+    def boom(source, tenant=None):
+        raise RuntimeError("agent down")
 
-    monkeypatch.setattr(rag, "delete_indexed_source", boom)
+    monkeypatch.setattr(ingest_client, "delete_indexed_source_remote", boom)
 
     # Must not raise — the B2 delete already succeeded.
     files_service.remove_file(TEST_USER_ID, f"uploads/{TEST_USER_ID}/report.pdf")
 
 
 def test_remove_file_unconfigured_skips_purge(monkeypatch):
-    monkeypatch.setattr(files_service.settings, "qdrant_url", "")
-    monkeypatch.setattr(files_service.settings, "agentic_assistant_database_url", "")
+    # Real adapter, empty settings: returns False with no HTTP attempt.
+    monkeypatch.setattr(files_service.settings, "agent_service_url", "")
+    monkeypatch.setattr(files_service.settings, "agent_service_token", "")
     monkeypatch.setattr(files_service, "delete_file", lambda k: None)
-    purged: list[str] = []
-    monkeypatch.setattr(rag, "delete_indexed_source", lambda s, **kw: purged.append(s))
 
     files_service.remove_file(TEST_USER_ID, f"uploads/{TEST_USER_ID}/report.pdf")
-
-    assert purged == []

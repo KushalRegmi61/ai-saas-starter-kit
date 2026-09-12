@@ -65,10 +65,33 @@ jobs:
         run: uv sync --frozen --all-packages --all-groups
 
       - name: Lint (ruff)
-        run: .venv/bin/ruff check services/api libs/rag libs/auth services/shared services/worker
+        run: .venv/bin/ruff check services/api libs/rag libs/auth services/shared services/worker services/agentic-assistant
 
       - name: Tests (pytest)
         run: cd services/api && ../../.venv/bin/python -m pytest
 
       - name: Structure boundary tests
         run: cd services/api && ../../.venv/bin/python -m pytest tests/test_structure.py -v
+
+  agent:
+    name: Agent (ruff · pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync workspace
+        run: uv sync --frozen --all-packages --all-groups
+
+      - name: Lint (ruff)
+        run: .venv/bin/ruff check services/agentic-assistant
+
+      - name: Tests (pytest)
+        run: cd services/agentic-assistant && ../../.venv/bin/python -m pytest

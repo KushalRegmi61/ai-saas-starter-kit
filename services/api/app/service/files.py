@@ -157,14 +157,13 @@ def remove_file(user_id: str, key: str) -> None:
     """Own the key, then delete the file. Raises RuntimeError on B2 failure."""
     _require_owned(user_id, key)
     delete_file(key)
-    # Best-effort RAG purge: the B2 delete already succeeded, so an unconfigured
-    # or failing RAG must never fail the request — skip quietly or log and move on.
-    if not (settings.qdrant_url and settings.agentic_assistant_database_url):
-        return
+    # Best-effort purge on the agentic-assistant: the B2 delete already
+    # succeeded, so an unconfigured or failing agent must never fail the
+    # request — skip quietly or log and move on.
     try:
-        from rag import delete_indexed_source
+        from app.repo import ingest_client
 
-        delete_indexed_source(key, tenant=settings.agentic_assistant_tenant)
+        ingest_client.delete_indexed_source_remote(key, tenant=settings.agentic_assistant_tenant)
     except Exception:
         logger.exception("RAG purge failed: key=%s", key)
 

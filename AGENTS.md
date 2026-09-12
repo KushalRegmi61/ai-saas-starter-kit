@@ -8,6 +8,7 @@ This is the authoritative control surface for all coding agents. Read this first
 ```
 apps/web/          Next.js 16 frontend (App Router, Tailwind v4, shadcn/ui)
 services/api/      FastAPI backend (layered: types/config/repo/service/runtime)
+services/agentic-assistant/  Agentic knowledge assistant (LangGraph over libs/rag, LangFuse tracing)
 libs/rag/          Shared RAG library (importable engine: retrieval + ingestion, auth-agnostic)
 packages/shared/   Shared TypeScript types
 docs/              System of record (features, workflows, security, reliability)
@@ -91,10 +92,12 @@ pnpm lint:api          # backend lint (ruff)
 pnpm lint:shared        # shared package lint (ruff)
 pnpm lint:worker        # worker lint (ruff)
 pnpm lint:rag           # rag library lint (ruff)
+pnpm lint:agent         # agentic-assistant lint (ruff)
 pnpm test:api          # backend tests (pytest)
 pnpm test:shared       # shared package tests (pytest)
 pnpm test:worker       # worker tests (pytest)
 pnpm test:rag          # rag library tests (pytest)
+pnpm test:agent        # agentic-assistant tests (pytest)
 pnpm check:structure   # structural boundary tests
 pnpm test:e2e          # Playwright e2e tests (local / pre-release only — see below)
 ```
