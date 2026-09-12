@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from rag.config import get_rag_settings
+from rag.retrieval.rbac import normalize_tenant
 
 _pool = None
 
@@ -82,6 +83,19 @@ def ensure_tables(connection) -> None:
         ALTER TABLE documents ADD COLUMN IF NOT EXISTS file_mtime DOUBLE PRECISION
         """
     )
+    connection.execute(
+        "ALTER TABLE documents ADD COLUMN IF NOT EXISTS tenant TEXT DEFAULT 'default'"
+    )
+    connection.execute("UPDATE documents SET tenant = 'default' WHERE tenant IS NULL")
+    connection.execute("ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_pkey")
+    connection.execute(
+        """
+        DO $$ BEGIN
+            ALTER TABLE documents ADD PRIMARY KEY (tenant, source);
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$;
+        """
+    )
     ensure_cache_table(connection, dims=get_rag_settings().embedding_dimensions)
     connection.execute(
         """
@@ -95,11 +109,12 @@ def ensure_tables(connection) -> None:
     )
 
 
-def get_document(connection, source: str) -> dict | None:
+def get_document(connection, source: str, tenant: str | None = None) -> dict | None:
+    tn = normalize_tenant(tenant)
     row = connection.execute(
         "SELECT source, content_hash, file_mtime, department, access_level, "
-        "chunks_count, indexed_at, status FROM documents WHERE source = %s",
-        (source,),
+        "chunks_count, indexed_at, status FROM documents WHERE tenant = %s AND source = %s",
+        (tn, source),
     ).fetchone()
     if not row:
         return None
@@ -123,14 +138,16 @@ def upsert_document(
     department: str = "general",
     access_level: str = "internal",
     file_mtime: float | None = None,
+    tenant: str = "default",
 ) -> None:
+    tn = normalize_tenant(tenant)
     connection.execute(
         """
         INSERT INTO documents
-            (source, content_hash, file_mtime, department, access_level,
+            (tenant, source, content_hash, file_mtime, department, access_level,
              chunks_count, indexed_at, status)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, 'indexed')
-        ON CONFLICT (source) DO UPDATE SET
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'indexed')
+        ON CONFLICT (tenant, source) DO UPDATE SET
             content_hash  = EXCLUDED.content_hash,
             file_mtime    = EXCLUDED.file_mtime,
             department    = EXCLUDED.department,
@@ -139,16 +156,22 @@ def upsert_document(
             indexed_at    = EXCLUDED.indexed_at,
             status        = 'indexed'
         """,
-        (source, content_hash, file_mtime, department, access_level, chunks_count, _now()),
+        (tn, source, content_hash, file_mtime, department, access_level, chunks_count, _now()),
     )
 
 
-def update_mtime(connection, source: str, file_mtime: float) -> None:
+def update_mtime(
+    connection, source: str, file_mtime: float, tenant: str | None = None
+) -> None:
+    tn = normalize_tenant(tenant)
     connection.execute(
-        "UPDATE documents SET file_mtime = %s WHERE source = %s",
-        (file_mtime, source),
+        "UPDATE documents SET file_mtime = %s WHERE source = %s AND tenant = %s",
+        (file_mtime, source, tn),
     )
 
 
-def delete_document(connection, source: str) -> None:
-    connection.execute("DELETE FROM documents WHERE source = %s", (source,))
+def delete_document(connection, source: str, tenant: str | None = None) -> None:
+    tn = normalize_tenant(tenant)
+    connection.execute(
+        "DELETE FROM documents WHERE source = %s AND tenant = %s", (source, tn)
+    )

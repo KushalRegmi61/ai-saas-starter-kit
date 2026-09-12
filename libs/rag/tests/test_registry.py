@@ -22,7 +22,7 @@ def test_upsert_document_uses_on_conflict_source():
     conn = _mock_conn()
     upsert_document(conn, "s.pdf", "abc123", 3)
     sql = conn.execute.call_args.args[0]
-    assert "ON CONFLICT (source)" in sql
+    assert "ON CONFLICT (tenant, source)" in sql
 
 
 def test_get_document_returns_none_when_missing():
@@ -35,6 +35,7 @@ def test_update_mtime_issues_update():
     update_mtime(conn, "s.pdf", 123.0)
     sql = conn.execute.call_args.args[0]
     assert "UPDATE documents" in sql
+    assert "tenant = %s" in sql
 
 
 def test_delete_document_issues_delete():
@@ -42,6 +43,7 @@ def test_delete_document_issues_delete():
     delete_document(conn, "s.pdf")
     sql = conn.execute.call_args.args[0]
     assert "DELETE FROM documents" in sql
+    assert "tenant = %s" in sql
 
 
 def test_ensure_tables_includes_file_mtime():

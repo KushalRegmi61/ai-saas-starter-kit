@@ -23,6 +23,27 @@ class _FakeConnCtx:
         return False
 
 
+class FakeConn:
+    """Mock connection recording execute(sql, params) calls (test_registry.py style)."""
+
+    def __init__(self, fetchone=None):
+        self.executed = []
+        self._fetchone = fetchone
+
+    def execute(self, sql, params=None):
+        self.executed.append((sql, params))
+        return self
+
+    def fetchone(self):
+        return self._fetchone
+
+    def __enter__(self):
+        return self.conn
+
+    def __exit__(self, *exc):
+        return False
+
+
 def test_access_filter_carries_tenant_and_attributes():
     filt = AccessFilter(
         departments=["hr", "all", "general"],
@@ -158,3 +179,35 @@ def test_scroll_corpus_meta_carries_tenant(monkeypatch):
     )
     docs = qr.scroll_corpus(["hr"], 3, limit=10, tenant="api")
     assert docs[0].metadata["tenant"] == "api"
+
+
+def test_ensure_tables_adds_tenant_column_and_composite_key():
+    from rag.repo import neon_repo
+
+    conn = FakeConn()
+    neon_repo.ensure_tables(conn)
+    stmts = [sql for sql, _ in conn.executed]
+    assert any("ADD COLUMN IF NOT EXISTS tenant" in s for s in stmts)
+    assert any("tenant" in s and "source" in s and "PRIMARY KEY" in s for s in stmts)
+
+
+def test_upsert_document_scopes_conflict_to_tenant():
+    from rag.repo import neon_repo
+
+    conn = FakeConn()
+    neon_repo.upsert_document(conn, source="s", content_hash="h", chunks_count=1, tenant="api")
+    sql, params = conn.executed[-1]
+    assert "ON CONFLICT (tenant, source)" in sql
+    assert params[0] == "api"  # tenant is the FIRST bound param after the column reorder
+    assert params[1] == "s"
+
+
+def test_get_and_delete_document_filter_by_tenant():
+    from rag.repo import neon_repo
+
+    conn = FakeConn()
+    neon_repo.get_document(conn, "s", tenant="api")
+    assert "tenant = %s" in conn.executed[-1][0]
+    assert conn.executed[-1][1] == ("api", "s")
+    neon_repo.delete_document(conn, "s", tenant="api")
+    assert "tenant = %s" in conn.executed[-1][0]
