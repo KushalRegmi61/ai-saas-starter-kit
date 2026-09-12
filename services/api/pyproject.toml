@@ -6,15 +6,15 @@ requires-python = ">=3.11"
 # Workspace-local dependencies (PEP 621 names must match the sibling
 # pyproject `name` fields so the CodeNib graph resolves project edges):
 #   ai-saas-shared -> services/shared (imported as `shared.*`)
-#   ai-saas-rag    -> libs/rag        (imported as `rag.*`)
 #   ai-saas-auth   -> libs/auth       (imported as `auth.*`)
 # Installed as editable workspace members (uv workspace `knowledge-os`;
 # `[tool.uv.sources]` below), mirroring the TS `workspace:*` convention in
 # apps/web/package.json. Third-party floors mirror the last tested pins;
-# exact versions lock in the root `uv.lock`.
+# exact versions lock in the root `uv.lock`. No ai-saas-rag: retrieval and
+# indexing live in services/agentic-assistant; this service only forwards
+# bytes over HTTP via repo/ingest_client.py.
 dependencies = [
     "ai-saas-shared",
-    "ai-saas-rag",
     "ai-saas-auth",
     "bcrypt>=5.0.0",
     "fastapi>=0.139.2",
@@ -43,7 +43,6 @@ dev = ["ruff>=0.15.22", "pytest>=9.1.1", "pytest-asyncio>=1.4.0"]
 
 [tool.uv.sources]
 ai-saas-shared = { workspace = true }
-ai-saas-rag = { workspace = true }
 ai-saas-auth = { workspace = true }
 
 [build-system]

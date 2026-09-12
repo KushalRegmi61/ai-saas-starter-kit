@@ -153,19 +153,14 @@ class Settings(BaseSettings):
     # then sends `Authorization: Bearer <token>`.
     metrics_token: str = ""
 
-    # RAG retrieval (Qdrant vectors + Neon registry/cache). Optional to boot:
-    # /retrieval/search returns 503 when Qdrant/Neon/OpenAI are unconfigured.
-    # JWT below is the enterprise RAG issuer (temporary adapter in repo/rag_auth.py
-    # until services/auth ships as its own package).
-    qdrant_url: str = ""
-    qdrant_api_key: str = ""
-    qdrant_collection: str = "chunks"
-    agentic_assistant_database_url: str = ""
-    agentic_assistant_jwt_secret: str = ""
-    agentic_assistant_jwt_algorithm: str = "HS256"
-    agentic_assistant_rate_limit_requests: int = 60
-    agentic_assistant_rate_limit_window_seconds: int = 60
+    # Tenant stamp forwarded with every ingest/purge call so the
+    # agentic-assistant scopes API-uploaded sources to this tenant.
     agentic_assistant_tenant: str = "api"
+
+    # Agentic-assistant ingestion surface (POST /ingest, DELETE /sources).
+    # Empty = finalize/delete skip forwarding (uploads still succeed).
+    agent_service_url: str = ""
+    agent_service_token: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
