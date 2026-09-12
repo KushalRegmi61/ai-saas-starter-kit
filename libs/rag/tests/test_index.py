@@ -113,4 +113,4 @@ def test_delete_indexed_source_purges_all_three(monkeypatch):
     assert isinstance(idx.ensure_tables, MagicMock)
     idx.ensure_tables.assert_called_once_with(conn)
     idx.delete_document.assert_called_once_with(conn, "notes.txt", tenant="default")
-    idx.flush_cache.assert_called_once_with(conn)
+    idx.flush_cache.assert_called_once_with(conn, tenant="default")

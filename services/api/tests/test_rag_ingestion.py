@@ -206,7 +206,7 @@ def test_remove_file_purges_indexed_source(monkeypatch):
     monkeypatch.setattr(files_service, "delete_file", lambda k: deleted.append(k))
     purged: list[str] = []
     purged_tenant: list[str] = []
-    def fake_purge(source, tenant="api"):
+    def fake_purge(source, *, tenant):
         purged.append(source)
         purged_tenant.append(tenant)
     monkeypatch.setattr(rag, "delete_indexed_source", fake_purge)

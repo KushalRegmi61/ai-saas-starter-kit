@@ -100,4 +100,4 @@ def delete_indexed_source(source: str, tenant: str | None = None) -> None:
     with get_conn() as conn:
         ensure_tables(conn)
         delete_document(conn, source, tenant=tn)
-        flush_cache(conn)
+        flush_cache(conn, tenant=tn)

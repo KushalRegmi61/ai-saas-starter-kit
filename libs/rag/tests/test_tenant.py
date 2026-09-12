@@ -251,6 +251,43 @@ def test_semantic_lookup_filters_by_tenant():
     assert "api" in conn.executed[-1][1]
 
 
+def test_search_rag_normalizes_empty_tenant_to_default_and_preserves_none(monkeypatch):
+    from types import SimpleNamespace
+
+    import rag.retrieval.search as search_mod
+    from rag.repo import embeddings, qdrant_repo
+    from rag.retrieval import query_router, reranker
+
+    seen: dict = {}
+    monkeypatch.setattr(query_router, "resolve_search_mode", lambda q, m: ("semantic", "t"))
+    monkeypatch.setattr(embeddings, "embed_query", lambda q: [0.1] * 4)
+    monkeypatch.setattr(
+        search_mod, "get_rag_settings", lambda: SimpleNamespace(reranker_top_n=5)
+    )
+
+    def fake_semantic(vector, k, departments, level, tenant=None):
+        seen.setdefault("semantic", []).append(tenant)
+        return [(SimpleDocForTest(metadata={"source": "s", "chunk_index": 0}), 0.9)]
+
+    def fake_scroll(departments, level, tenant=None, **kw):
+        seen.setdefault("scroll", []).append(tenant)
+        return [SimpleDocForTest(metadata={"source": "s", "chunk_index": 0})]
+
+    monkeypatch.setattr(qdrant_repo, "semantic_search", fake_semantic)
+    monkeypatch.setattr(qdrant_repo, "scroll_corpus", fake_scroll)
+    monkeypatch.setattr(reranker, "rerank", lambda q, c, top_k: c[:top_k])
+    _get = lambda *a, **k: seen.setdefault("get", []).append(a[4]) or None  # noqa: E731
+    _put = lambda *a, **k: seen.setdefault("put", []).append(a[5])  # noqa: E731
+    monkeypatch.setattr(search_mod, "_cache_get", _get)
+    monkeypatch.setattr(search_mod, "_cache_put", _put)
+    empty = AccessFilter(departments=["all"], max_access_level=0, tenant="")
+    search_mod.search_rag("hi?", access_filter=empty)
+    assert [seen[k][-1] for k in ("semantic", "scroll", "get", "put")] == ["default"] * 4
+    legacy = AccessFilter(departments=["all"], max_access_level=0)
+    search_mod.search_rag("hi?", access_filter=legacy)
+    assert [seen[k][-1] for k in ("semantic", "scroll", "get", "put")] == [None] * 4
+
+
 def test_flush_cache_scopes_to_tenant():
     from rag.retrieval import query_cache
 

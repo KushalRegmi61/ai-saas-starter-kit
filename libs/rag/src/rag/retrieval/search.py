@@ -9,6 +9,7 @@ from rag.config import get_rag_settings
 from rag.repo import embeddings, neon_repo, qdrant_repo
 from rag.retrieval import hybrid, query_cache, query_router, reranker
 from rag.retrieval.formatting import source_from_metadata
+from rag.retrieval.rbac import normalize_tenant
 from rag.types import AccessFilter, SearchMode, SearchResponse, SearchResult
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ def search_rag(
         raise ValueError("question must be non-empty")
     top_k = max(1, min(int(top_k), 10))
     filt = access_filter or AccessFilter(departments=["all"], max_access_level=0)
+    tn = normalize_tenant(filt.tenant) if filt.tenant is not None else None
     resolved_mode, _reason = query_router.resolve_search_mode(question, search_mode)
     settings = get_rag_settings()
     candidate_k = max(settings.reranker_top_n, top_k * 4, 20)
@@ -37,10 +39,10 @@ def search_rag(
             candidate_k,
             list(filt.departments),
             int(filt.max_access_level),
-            filt.tenant,
+            tn,
         )
         corpus_docs = qdrant_repo.scroll_corpus(
-            list(filt.departments), int(filt.max_access_level), tenant=filt.tenant
+            list(filt.departments), int(filt.max_access_level), tenant=tn
         )
         semantic_results = semantic_future.result()
 
@@ -64,7 +66,7 @@ def search_rag(
     ]
     ctx_hash = query_cache.context_hash(chunk_ids)
 
-    cached_response = _cache_get(question, query_vector, ctx_hash, resolved_mode, filt.tenant)
+    cached_response = _cache_get(question, query_vector, ctx_hash, resolved_mode, tn)
     if cached_response is not None:
         return cached_response
 
@@ -73,7 +75,7 @@ def search_rag(
         for d, score in ranked
     ]
     response = SearchResponse(question=question, results=results, search_mode=resolved_mode)
-    _cache_put(question, query_vector, response, resolved_mode, ctx_hash, filt.tenant)
+    _cache_put(question, query_vector, response, resolved_mode, ctx_hash, tn)
     return response
 
 
