@@ -6,8 +6,12 @@ import type {
   LoginResponse,
   WebSocketTicketResponse,
   ConversationTurn,
+  StreamEvent,
 } from "../types";
 
+// The agentic-assistant backend serves both REST and the /ask WebSocket.
+// Local default is :8000 (see services/agentic-assistant); override with
+// NEXT_PUBLIC_ASSISTANT_API_URL (documented in .env.example).
 export const ASSISTANT_API_BASE =
   process.env.NEXT_PUBLIC_ASSISTANT_API_URL || "http://localhost:8000";
 
@@ -147,4 +151,43 @@ export async function getConversationHistory(
     { method: "GET" },
     token
   );
+}
+
+export interface AssistantSocketHandlers {
+  onEvent: (event: StreamEvent) => void;
+  onReadyStateChange: (connected: boolean) => void;
+}
+
+export function assistantWsUrl(): string {
+  return ASSISTANT_API_BASE.replace(/^http/, "ws") + "/ask";
+}
+
+/** Single connection path for the /ask WebSocket: auth on open, JSON parse per frame. */
+export function connectAssistantSocket(
+  ticket: string,
+  handlers: AssistantSocketHandlers
+): WebSocket {
+  const ws = new WebSocket(assistantWsUrl());
+
+  ws.onopen = () => {
+    ws.send(
+      JSON.stringify({
+        type: "auth",
+        access_token: ticket,
+      })
+    );
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      handlers.onEvent(JSON.parse(event.data) as StreamEvent);
+    } catch {
+      // Ignore malformed frames; the stream continues.
+    }
+  };
+
+  ws.onclose = () => handlers.onReadyStateChange(false);
+  ws.onerror = () => handlers.onReadyStateChange(false);
+
+  return ws;
 }

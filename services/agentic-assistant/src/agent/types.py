@@ -1,7 +1,5 @@
 """Assistant boundary types. Reuses rag contract types; no logic, no layer imports."""
 
-from typing import Literal
-
 from pydantic import BaseModel, Field
 from rag.types import SearchMode, Source
 
@@ -23,5 +21,10 @@ class AskResponse(BaseModel):
 
 
 class ConversationTurn(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str
+    """One rendered Q/A turn for history reloads. Mirrors the web ConversationTurn."""
+
+    turn_index: int
+    question: str
+    answer: str
+    sources: list[dict] = Field(default_factory=list)
+    created_at: str | None = None

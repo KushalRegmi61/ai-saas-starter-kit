@@ -50,3 +50,26 @@ def test_memory_settings_ignore_unscoped_environment_names(monkeypatch):
     assert settings.max_history_turns == 6
     assert settings.memory_max_tokens == 2048
     assert settings.ws_ticket_ttl_seconds == 60
+
+
+def test_llm_timeout_is_configurable_and_wired_to_factory(monkeypatch):
+    """Every LLM call must be bounded: an unbounded call hung a live socket."""
+    import agent.llm as llm_mod
+
+    monkeypatch.setenv("AGENTIC_ASSISTANT_LLM_TIMEOUT_SECONDS", "45")
+    settings = AgentSettings(_env_file=None)
+    assert settings.openai_request_timeout_seconds == 45.0
+
+    seen = {}
+    monkeypatch.setattr(
+        llm_mod, "ChatOpenAI", lambda **kwargs: seen.update(kwargs) or object()
+    )
+    monkeypatch.setattr(llm_mod, "get_agent_settings", lambda: settings)
+    llm_mod._chat_model()
+    assert seen["request_timeout"] == 45.0
+    assert seen["max_retries"] == settings.openai_retry_attempts
+
+
+def test_llm_timeout_has_sane_default(monkeypatch):
+    monkeypatch.delenv("AGENTIC_ASSISTANT_LLM_TIMEOUT_SECONDS", raising=False)
+    assert AgentSettings(_env_file=None).openai_request_timeout_seconds == 120.0

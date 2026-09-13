@@ -16,6 +16,11 @@ class AgentSettings(BaseSettings):
     openai_retry_attempts: int = 3
     openai_retry_min_wait: float = 1.0
     openai_retry_max_wait: float = 10.0
+    # Per-request timeout: an unbounded LLM call hangs its WebSocket task
+    # forever (one stalled provider response wedged a live follow-up).
+    openai_request_timeout_seconds: float = Field(
+        default=120.0, gt=0, validation_alias="AGENTIC_ASSISTANT_LLM_TIMEOUT_SECONDS"
+    )
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_base_url: str = ""

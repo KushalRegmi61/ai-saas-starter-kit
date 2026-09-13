@@ -54,6 +54,78 @@ async def test_stream_graph_emits_done_event(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_stream_graph_survives_non_dict_agent_end_output(monkeypatch):
+    """Live graphs report inner-runnable string outputs on agent chain-end.
+
+    The budget step must skip rendering instead of raising AttributeError,
+    which previously turned every ReAct ask into a socket server_error.
+    """
+    monkeypatch.setattr(get_agent_settings(), "openai_api_key", "test-key")
+
+    final_state = {
+        "answer": "done", "sources": [], "grounded": False,
+        "results": [], "workflow_steps": [], "messages": [],
+    }
+
+    async def fake_astream_events(state, version="v2"):
+        yield {"event": "on_chain_end", "name": "agent",
+               "data": {"output": "inner runnable text output"}, "metadata": {}}
+        yield {"event": "on_chain_end", "name": "LangGraph",
+               "data": {"output": final_state}, "metadata": {}}
+
+    class FakeGraph:
+        def astream_events(self, state, version="v2"):
+            return fake_astream_events(state, version)
+
+    from agent.graph import workflow as wf
+    monkeypatch.setattr(wf, "get_agent_graph", lambda: FakeGraph())
+
+    events = [e async for e in stream_graph("What is the policy?")]
+    assert events[-1]["type"] == "done"
+    assert events[-1]["answer"] == "done"
+    assert not [e for e in events if e.get("name") == "agent_budget"]
+
+
+def test_parallel_tool_writes_merge_without_invalid_update():
+    """Two searches finishing in one step must not raise InvalidUpdateError.
+
+    Regression: a follow-up whose agent issued two parallel searches crashed
+    the live socket (server_error, then a hung connection) because `sources`
+    was a LastValue channel. Sources/results accumulate; steps last-win.
+    """
+    from langgraph.graph import END, START, StateGraph
+
+    from agent.graph.state import AgentState, make_initial_state
+
+    def writer_a(_state):
+        return {
+            "sources": [{"source": "a.pdf"}],
+            "results": [],
+            "workflow_steps": ["writer_a"],
+        }
+
+    def writer_b(_state):
+        return {
+            "sources": [{"source": "b.pdf"}],
+            "results": [],
+            "workflow_steps": ["writer_b"],
+        }
+
+    graph = StateGraph(AgentState)
+    graph.add_node("writer_a", writer_a)
+    graph.add_node("writer_b", writer_b)
+    graph.add_edge(START, "writer_a")
+    graph.add_edge(START, "writer_b")
+    graph.add_edge("writer_a", END)
+    graph.add_edge("writer_b", END)
+
+    out = graph.compile().invoke(make_initial_state("policy?", access_filter=None))
+    assert sorted(s["source"] for s in out["sources"]) == ["a.pdf", "b.pdf"]
+    assert out["workflow_steps"][-1] in ("writer_a", "writer_b")
+    assert len(out["workflow_steps"]) == 1
+
+
+@pytest.mark.asyncio
 async def test_stream_graph_emits_token_events(monkeypatch):
     monkeypatch.setattr(get_agent_settings(), "openai_api_key", "test-key")
 

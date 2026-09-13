@@ -111,7 +111,7 @@ def get_full_history(connection: Any, conversation_id: str, owner_subject: str) 
     snapshot = load_snapshot(connection, conversation_id, owner_subject)
     rows = connection.execute(
         """
-        SELECT role, content
+        SELECT turn_index, role, content, created_at
         FROM assistant_conversation_turns
         WHERE conversation_id = %s
         ORDER BY turn_index ASC
@@ -120,7 +120,40 @@ def get_full_history(connection: Any, conversation_id: str, owner_subject: str) 
     ).fetchall()
     # Loading the snapshot first performs the ownership check before any history leaves storage.
     del snapshot
-    return [{"role": row[0], "content": row[1]} for row in rows]
+    logger.info("models: history rows=%d conversation_id=%s", len(rows), conversation_id)
+    return _pair_turns(rows)
+
+
+def _pair_turns(rows: list) -> list[dict]:
+    """Fold ordered (turn_index, role, content, created_at) rows into Q/A turns.
+
+    Exchanges are appended atomically as user+assistant pairs, so a trailing
+    lone user turn (or any orphan) is skipped rather than rendered half-empty.
+    Per-turn sources are not persisted; pairs carry sources=[].
+    """
+    turns: list[dict] = []
+    pending: tuple | None = None
+    for index, role, content, created_at in rows:
+        if role == "user":
+            pending = (index, content)
+        elif role == "assistant" and pending is not None:
+            user_index, question = pending
+            pending = None
+            timestamp = (
+                created_at.isoformat()
+                if hasattr(created_at, "isoformat")
+                else created_at
+            )
+            turns.append(
+                {
+                    "turn_index": user_index,
+                    "question": question,
+                    "answer": content,
+                    "sources": [],
+                    "created_at": timestamp,
+                }
+            )
+    return turns
 
 
 def append_exchange(

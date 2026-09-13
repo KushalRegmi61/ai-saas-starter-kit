@@ -203,6 +203,8 @@ def _chat_model() -> ChatOpenAI:
         "model": settings.openai_chat_model,
         "temperature": 0,
         "api_key": settings.openai_api_key,
+        "request_timeout": settings.openai_request_timeout_seconds,
+        "max_retries": settings.openai_retry_attempts,
     }
     if settings.openai_base_url:
         kwargs["base_url"] = settings.openai_base_url

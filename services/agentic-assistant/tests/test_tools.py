@@ -156,3 +156,48 @@ def test_tool_returns_formatted_chunks(monkeypatch):
     assert "chunk text" in messages[0].content
     assert "doc.pdf" in messages[0].content
     assert cmd.update["sources"][0]["source"] == "doc.pdf"
+
+
+def test_tool_sources_carry_truncated_snippet(monkeypatch):
+    long_text = "x" * 500
+
+    def fake_results(question, **kw):
+        return SearchResponse(
+            question=question,
+            results=[_result(long_text, "doc.pdf", 0.85)],
+            search_mode="hybrid",
+        )
+
+    monkeypatch.setattr(search_mod, "search_rag", fake_results)
+
+    cmd = search_mod.search_knowledge_base.func(
+        question="policy?",
+        tool_call_id="call_snip",
+        access_filter=None,
+    )
+    source = cmd.update["sources"][0]
+    assert source["source"] == "doc.pdf"
+    assert source["snippet"] == "x" * search_mod.SNIPPET_CHARS
+    assert len(source["snippet"]) == search_mod.SNIPPET_CHARS
+
+
+def test_tool_snippet_does_not_break_grounding_shape(monkeypatch):
+    """Grounding reads only Source keys; the extra snippet key must be inert."""
+
+    def fake_results(question, **kw):
+        return SearchResponse(
+            question=question,
+            results=[_result("pto policy allows carryover", "policy.pdf", 0.9)],
+            search_mode="hybrid",
+        )
+
+    monkeypatch.setattr(search_mod, "search_rag", fake_results)
+
+    cmd = search_mod.search_knowledge_base.func(
+        question="pto?",
+        tool_call_id="call_ground",
+        access_filter=None,
+    )
+    source = cmd.update["sources"][0]
+    assert set(source) >= {"source", "page", "chunk_index", "score", "snippet"}
+    assert Source(**{k: v for k, v in source.items() if k != "snippet"})

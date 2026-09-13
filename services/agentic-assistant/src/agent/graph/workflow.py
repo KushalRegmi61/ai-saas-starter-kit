@@ -175,18 +175,27 @@ async def stream_graph(
                         if token:
                             yield {"type": "token", "content": token}
 
-            # Agent budget step event
+            # Agent budget step event. The end payload is not always the
+            # state-update dict (inner runnables report plain outputs), so
+            # only render counts when the shape allows — the start step
+            # already covers the thinking indicator otherwise.
             elif kind == "on_chain_end" and node_name == "agent":
                 output = event["data"].get("output", {})
-                from agent.graph.nodes.agent import MAX_ITERATIONS, MAX_LOOP_TOKENS
-                yield {
-                    "type": "step",
-                    "name": "agent_budget",
-                    "text": (
-                        f"reasoning: {output.get('tool_call_count', 0)}/{MAX_ITERATIONS} steps, "
-                        f"{output.get('loop_tokens_used', 0)}/{MAX_LOOP_TOKENS} tokens"
-                    ),
-                }
+                if isinstance(output, dict):
+                    from agent.graph.nodes.agent import MAX_ITERATIONS, MAX_LOOP_TOKENS
+                    yield {
+                        "type": "step",
+                        "name": "agent_budget",
+                        "text": (
+                            f"reasoning: {output.get('tool_call_count', 0)}/{MAX_ITERATIONS} steps, "
+                            f"{output.get('loop_tokens_used', 0)}/{MAX_LOOP_TOKENS} tokens"
+                        ),
+                    }
+                else:
+                    logger.debug(
+                        "workflow: agent end output is %s, skipping budget step",
+                        type(output).__name__,
+                    )
 
             # Top-level graph end → capture final state
             elif kind == "on_chain_end" and name == "LangGraph":

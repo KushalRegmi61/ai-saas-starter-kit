@@ -20,7 +20,8 @@ export interface WebSocketTicketResponse {
   expires_in: number;
 }
 
-export type SearchMode = "auto" | "vector" | "bm25" | "hybrid";
+/** Retrieval is locked to hybrid (dense + sparse); the UI offers no mode choice. */
+export type SearchMode = "hybrid";
 
 export interface AskSocketRequest {
   type: "ask";
@@ -31,14 +32,20 @@ export interface AskSocketRequest {
   conversation_id?: string | null;
 }
 
+/**
+ * Evidence card for one retrieved chunk. The wire sends backend Source
+ * dicts ({source, page?, chunk_index?, score?, snippet?}); toEvidence()
+ * adapts them here. score/snippet stay optional because the backend may
+ * omit them (unscored or pre-snippet history) — the panel hides those parts.
+ */
 export interface RAGSourceEvidence {
   doc_id: string;
   title: string;
   source: string;
   department?: string;
   access_level?: string;
-  score: number;
-  snippet: string;
+  score?: number;
+  snippet?: string;
 }
 
 export interface StreamEventReady {
@@ -46,10 +53,16 @@ export interface StreamEventReady {
   expires_at: string;
 }
 
+export type AgentStep = "rewrite" | "retrieve" | "generate" | "idle";
+
 export interface StreamEventStep {
   type: "step";
   request_id: string;
-  name: "rewrite" | "retrieve" | "generate";
+  // Backend graph node name (classify_intent, agent, tools, ...) or a
+  // legacy pipeline stage (rewrite, retrieve, generate). Absent on
+  // service-level steps such as memory compaction.
+  name?: string;
+  text?: string;
   query?: string;
   expanded_queries?: string[];
   sources?: RAGSourceEvidence[];

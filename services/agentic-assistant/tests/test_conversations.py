@@ -1,6 +1,7 @@
 """Conversation storage primitives and ownership/serialization tests."""
 
 from contextlib import contextmanager
+from datetime import UTC, datetime
 
 import pytest
 
@@ -10,6 +11,7 @@ from models.conversations import (
     append_exchange,
     conversation_lock,
     ensure_conversation_tables,
+    get_full_history,
     load_snapshot,
 )
 
@@ -100,3 +102,33 @@ def test_missing_snapshot_is_distinguished_from_owner_mismatch(monkeypatch):
     monkeypatch.setattr(connection, "execute", lambda sql, params=(): Result([]))
     with pytest.raises(ConversationNotFound):
         load_snapshot(connection, "missing", "u-1")
+
+
+def test_full_history_pairs_turns_and_skips_orphans():
+    stamped = datetime(2026, 9, 13, 2, 0, tzinfo=UTC)
+    connection = FakeConnection(
+        turns=[
+            (0, "user", "q1", stamped),
+            (1, "assistant", "a1", stamped),
+            (2, "user", "q2", stamped),
+            (3, "assistant", "a2", stamped),
+            (4, "user", "unanswered", stamped),
+        ]
+    )
+    history = get_full_history(connection, "c-1", "u-1")
+    assert history == [
+        {
+            "turn_index": 0,
+            "question": "q1",
+            "answer": "a1",
+            "sources": [],
+            "created_at": stamped.isoformat(),
+        },
+        {
+            "turn_index": 2,
+            "question": "q2",
+            "answer": "a2",
+            "sources": [],
+            "created_at": stamped.isoformat(),
+        },
+    ]

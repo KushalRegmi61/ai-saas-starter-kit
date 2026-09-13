@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
+import type { AgentStep } from "../../types";
 
-export type AgentStep = "rewrite" | "retrieve" | "generate" | "idle";
+export type { AgentStep };
 
 interface ThinkingIndicatorProps {
   /** The pipeline step currently active, or "idle" before first step lands */

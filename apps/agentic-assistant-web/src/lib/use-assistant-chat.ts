@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { getWsTicket, ASSISTANT_API_BASE } from "./api";
+import { getWsTicket, connectAssistantSocket } from "./api";
 import type {
+  AgentStep,
   ConversationTurn,
   RAGSourceEvidence,
-  SearchMode,
   StreamEvent,
 } from "../types";
 
@@ -14,11 +14,45 @@ export interface ActiveChatMessage {
   role: "user" | "assistant";
   content: string;
   isStreaming?: boolean;
+  agentStep?: AgentStep;
   rewriteQuery?: string;
   expandedQueries?: string[];
   sources?: RAGSourceEvidence[];
   error?: string;
 }
+
+/**
+ * Wire Source dict ({source, page?, chunk_index?, score?, snippet?}) ->
+ * evidence card. Already-shaped cards pass through; missing score/snippet
+ * stay undefined so the panel hides those parts instead of rendering NaN.
+ */
+function toEvidence(raw: unknown): RAGSourceEvidence {
+  const src = (raw ?? {}) as Record<string, unknown>;
+  const source = typeof src.source === "string" ? src.source : "unknown";
+  const page = typeof src.page === "number" ? ` (p. ${src.page})` : "";
+  const basename = source.split("/").pop() || source;
+  return {
+    doc_id: typeof src.doc_id === "string" ? src.doc_id : source,
+    title:
+      typeof src.title === "string" && src.title
+        ? src.title
+        : `${basename}${page}`,
+    source,
+    score: typeof src.score === "number" ? src.score : undefined,
+    snippet:
+      typeof src.snippet === "string" && src.snippet ? src.snippet : undefined,
+  };
+}
+
+/** Backend graph node name -> thinking-indicator step. Unmapped names are ignored. */
+const NODE_STEP_MAP: Record<string, AgentStep> = {
+  classify_intent: "rewrite",
+  agent: "retrieve",
+  tools: "retrieve",
+  agent_budget: "retrieve",
+  chitchat_respond: "generate",
+  generate_final: "generate",
+};
 
 export function useAssistantChat(token: string | null) {
   const [messages, setMessages] = useState<ActiveChatMessage[]>([]);
@@ -33,6 +67,11 @@ export function useAssistantChat(token: string | null) {
 
   const socketRef = useRef<WebSocket | null>(null);
   const activeRequestIdRef = useRef<string | null>(null);
+  // Synchronous busy flag: React state updates are async, so two rapid
+  // submits can both observe isBusy === false. The ref closes that race —
+  // only one ask is ever in flight, so tokens can't orphan onto the wrong
+  // assistant message.
+  const busyRef = useRef(false);
 
   const handleStreamEvent = useCallback((event: StreamEvent) => {
     if (event.type === "ready") {
@@ -48,11 +87,15 @@ export function useAssistantChat(token: string | null) {
           expandedQueries: event.expanded_queries,
         }));
       } else if (event.name === "retrieve" && event.sources) {
+        const stepSources = event.sources;
         setActiveEvidence((prev) => ({
           ...prev,
-          sources: event.sources,
+          sources: stepSources.map(toEvidence),
         }));
       }
+
+      const agentStep =
+        event.name !== undefined ? NODE_STEP_MAP[event.name] : undefined;
 
       setMessages((prev) => {
         const last = prev[prev.length - 1];
@@ -61,6 +104,7 @@ export function useAssistantChat(token: string | null) {
             ...prev.slice(0, -1),
             {
               ...last,
+              agentStep: agentStep ?? last.agentStep,
               rewriteQuery:
                 event.name === "rewrite" ? event.query : last.rewriteQuery,
               expandedQueries:
@@ -68,7 +112,9 @@ export function useAssistantChat(token: string | null) {
                   ? event.expanded_queries
                   : last.expandedQueries,
               sources:
-                event.name === "retrieve" ? event.sources : last.sources,
+                event.name === "retrieve"
+                  ? (event.sources ?? []).map(toEvidence)
+                  : last.sources,
             },
           ];
         }
@@ -90,6 +136,7 @@ export function useAssistantChat(token: string | null) {
       });
     } else if (event.type === "done") {
       setIsBusy(false);
+      busyRef.current = false;
       setConversationId(event.conversation_id);
       activeRequestIdRef.current = null;
       setMessages((prev) => {
@@ -100,7 +147,9 @@ export function useAssistantChat(token: string | null) {
             {
               ...last,
               content: event.answer || last.content,
-              sources: event.sources || last.sources,
+              sources: event.sources
+                ? event.sources.map(toEvidence)
+                : last.sources,
               isStreaming: false,
             },
           ];
@@ -109,6 +158,7 @@ export function useAssistantChat(token: string | null) {
       });
     } else if (event.type === "error") {
       setIsBusy(false);
+      busyRef.current = false;
       activeRequestIdRef.current = null;
       setMessages((prev) => {
         const last = prev[prev.length - 1];
@@ -131,37 +181,14 @@ export function useAssistantChat(token: string | null) {
     if (!token) return;
     try {
       const ticketRes = await getWsTicket(token);
-      const wsUrl = ASSISTANT_API_BASE.replace(/^http/, "ws") + "/ask";
-      const ws = new WebSocket(wsUrl);
-
-      ws.onopen = () => {
-        ws.send(
-          JSON.stringify({
-            type: "auth",
-            access_token: ticketRes.access_token,
-          })
-        );
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data: StreamEvent = JSON.parse(event.data);
-          handleStreamEvent(data);
-        } catch {
-          // Parse failure
-        }
-      };
-
-      ws.onclose = () => {
-        setIsConnected(false);
+      if (socketRef.current) {
+        socketRef.current.close();
         socketRef.current = null;
-      };
-
-      ws.onerror = () => {
-        setIsConnected(false);
-      };
-
-      socketRef.current = ws;
+      }
+      socketRef.current = connectAssistantSocket(ticketRes.access_token, {
+        onEvent: handleStreamEvent,
+        onReadyStateChange: setIsConnected,
+      });
     } catch {
       setIsConnected(false);
     }
@@ -170,40 +197,20 @@ export function useAssistantChat(token: string | null) {
   useEffect(() => {
     let isMounted = true;
     if (token && !socketRef.current) {
+      // Async boundary first: setState only runs in promise callbacks below.
       getWsTicket(token)
         .then((ticketRes) => {
           if (!isMounted) return;
-          const wsUrl = ASSISTANT_API_BASE.replace(/^http/, "ws") + "/ask";
-          const ws = new WebSocket(wsUrl);
-
-          ws.onopen = () => {
-            ws.send(
-              JSON.stringify({
-                type: "auth",
-                access_token: ticketRes.access_token,
-              })
-            );
-          };
-
-          ws.onmessage = (event) => {
-            try {
-              const data: StreamEvent = JSON.parse(event.data);
-              handleStreamEvent(data);
-            } catch {
-              // Parse failure
-            }
-          };
-
-          ws.onclose = () => {
-            if (isMounted) setIsConnected(false);
+          if (socketRef.current) {
+            socketRef.current.close();
             socketRef.current = null;
-          };
-
-          ws.onerror = () => {
-            if (isMounted) setIsConnected(false);
-          };
-
-          socketRef.current = ws;
+          }
+          socketRef.current = connectAssistantSocket(ticketRes.access_token, {
+            onEvent: handleStreamEvent,
+            onReadyStateChange: (connected) => {
+              if (isMounted) setIsConnected(connected);
+            },
+          });
         })
         .catch(() => {
           if (isMounted) setIsConnected(false);
@@ -219,16 +226,13 @@ export function useAssistantChat(token: string | null) {
   }, [token, handleStreamEvent]);
 
   const sendAsk = useCallback(
-    (question: string, searchMode: SearchMode = "auto", topK: number = 4) => {
-      if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
-        void connectSocket();
-        return;
-      }
-      if (isBusy) return;
+    // Retrieval is always hybrid; no mode knob reaches the wire.
+    (question: string, topK: number = 4) => {
+      if (busyRef.current) return;
+      busyRef.current = true;
 
       const requestId = "req_" + Math.random().toString(36).substring(2, 9);
       activeRequestIdRef.current = requestId;
-      setIsBusy(true);
 
       const userMsg: ActiveChatMessage = {
         id: `user_${requestId}`,
@@ -236,28 +240,74 @@ export function useAssistantChat(token: string | null) {
         content: question,
       };
 
-      const assistantMsg: ActiveChatMessage = {
-        id: requestId,
-        role: "assistant",
-        content: "",
-        isStreaming: true,
-      };
+      const socket = socketRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        // Offline: never drop the question silently. Show what happened,
+        // kick off a reconnect, and leave the composer usable for retry.
+        void connectSocket();
+        busyRef.current = false;
+        activeRequestIdRef.current = null;
+        setMessages((prev) => [
+          ...prev,
+          userMsg,
+          {
+            id: requestId,
+            role: "assistant",
+            content: "",
+            isStreaming: false,
+            error: "Not connected — reconnecting. Press send to retry.",
+          },
+        ]);
+        return;
+      }
 
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      setIsBusy(true);
+      setMessages((prev) => [
+        ...prev,
+        userMsg,
+        {
+          id: requestId,
+          role: "assistant",
+          content: "",
+          isStreaming: true,
+        },
+      ]);
       setActiveEvidence(null);
 
-      socketRef.current.send(
-        JSON.stringify({
-          type: "ask",
-          request_id: requestId,
-          question,
-          top_k: topK,
-          search_mode: searchMode,
-          conversation_id: conversationId,
-        })
-      );
+      try {
+        socket.send(
+          JSON.stringify({
+            type: "ask",
+            request_id: requestId,
+            question,
+            top_k: topK,
+            search_mode: "hybrid",
+            conversation_id: conversationId,
+          })
+        );
+      } catch {
+        // Socket died between the OPEN check and the send: mark the
+        // just-appended assistant message instead of throwing.
+        busyRef.current = false;
+        activeRequestIdRef.current = null;
+        setIsBusy(false);
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last && last.role === "assistant" && last.id === requestId) {
+            return [
+              ...prev.slice(0, -1),
+              {
+                ...last,
+                isStreaming: false,
+                error: "Send failed — the connection dropped. Press send to retry.",
+              },
+            ];
+          }
+          return prev;
+        });
+      }
     },
-    [connectSocket, conversationId, isBusy]
+    [connectSocket, conversationId]
   );
 
   const loadHistory = useCallback((turns: ConversationTurn[], convId: string) => {
@@ -285,6 +335,8 @@ export function useAssistantChat(token: string | null) {
     setConversationId(null);
     setActiveEvidence(null);
     setIsBusy(false);
+    busyRef.current = false;
+    activeRequestIdRef.current = null;
   }, []);
 
   return {

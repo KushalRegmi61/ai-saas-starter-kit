@@ -114,6 +114,7 @@ async def stream_chat(
         yield {
             "type": "done",
             "conversation_id": conversation_id,
+            "answer": final_event["answer"],
             "sources": final_event["sources"],
             "grounded": final_event["grounded"],
             "rewritten_question": final_event["rewritten_question"],

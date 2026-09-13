@@ -35,6 +35,10 @@ from agent.tools.registry import ToolEntry, register
 
 logger = logging.getLogger(__name__)
 
+# Snippet characters carried per source on the wire for the evidence panel.
+# Bounded: the panel clamps to ~3 lines, so full chunk texts never leave the backend.
+SNIPPET_CHARS = 300
+
 # InjectedToolCallId is not in all langgraph versions — use a compat shim
 try:
     from langchain_core.tools import InjectedToolCallId as _InjectedToolCallId
@@ -105,7 +109,13 @@ def search_knowledge_base(
 
     return Command(update={
         "messages": [ToolMessage(content=content, tool_call_id=tool_call_id)],
-        "sources": [r.source.model_dump() for r in response.results],
+        # Sources are serialised Source dicts plus a truncated snippet for the
+        # evidence panel. Downstream readers (grounding, sources_from_state)
+        # only touch the Source keys, so the extra key is backward-compatible.
+        "sources": [
+            {**r.source.model_dump(), "snippet": r.text[:SNIPPET_CHARS]}
+            for r in response.results
+        ],
         "results": response.results,
         "workflow_steps": [
             f"search_knowledge_base: {len(response.results)} chunks "

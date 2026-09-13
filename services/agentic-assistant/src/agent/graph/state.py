@@ -47,11 +47,16 @@ class AgentState(dict):
     # ------------------------------------------------------------------ #
     # Result accumulation — written by tool + streaming                   #
     # ------------------------------------------------------------------ #
-    results: list[SearchResult]   # chunks from last tool call (grounding input)
+    # sources/results accumulate across tool calls (operator.add) so parallel
+    # searches in one step never raise InvalidUpdateError and no retrieved
+    # chunk is silently dropped from grounding input or the evidence panel.
+    results: Annotated[list[SearchResult], operator.add]  # chunks from all tool calls this turn
     answer: str                   # final answer text
-    sources: list[dict]           # serialised Source objects
+    sources: Annotated[list[dict], operator.add]  # serialised Source objects + truncated snippet, all calls
     grounded: bool                # grounding check result
-    workflow_steps: list[str]     # audit trail of node transitions
+    # Nodes overwrite the full trail each step, so last-wins keeps that style
+    # while still tolerating parallel tool writes (one entry may lose the race).
+    workflow_steps: Annotated[list[str], lambda _old, new: new]  # audit trail of node transitions
 
 
 def make_initial_state(

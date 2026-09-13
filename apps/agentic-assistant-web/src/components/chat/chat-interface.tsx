@@ -16,18 +16,19 @@ import { useAssistantChat } from "../../lib/use-assistant-chat";
 import { RagEvidencePanel } from "./rag-evidence-panel";
 import { ThinkingIndicator } from "./thinking-indicator";
 import type { AgentStep } from "./thinking-indicator";
-import type { SearchMode } from "../../types";
 
 interface ChatInterfaceProps {
   token: string | null;
 }
 
-/** Derive the active agent step from message metadata */
+/** Derive the active agent step: live node mapping wins, metadata heuristic as fallback */
 function deriveStep(msg: {
+  agentStep?: AgentStep;
   rewriteQuery?: string;
   sources?: unknown[];
   content: string;
 }): AgentStep {
+  if (msg.agentStep && msg.agentStep !== "idle") return msg.agentStep;
   if (msg.content.length > 0) return "generate";
   if (msg.sources && msg.sources.length > 0) return "generate";
   if (msg.rewriteQuery) return "retrieve";
@@ -36,7 +37,6 @@ function deriveStep(msg: {
 
 export function ChatInterface({ token }: ChatInterfaceProps) {
   const [prompt, setPrompt] = useState("");
-  const [searchMode, setSearchMode] = useState<SearchMode>("auto");
   const [topK, setTopK] = useState(4);
   const [showSettings, setShowSettings] = useState(false);
 
@@ -55,7 +55,7 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
     if (!prompt.trim() || isBusy) return;
     const q = prompt.trim();
     setPrompt("");
-    sendAsk(q, searchMode, topK);
+    sendAsk(q, topK);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -130,16 +130,9 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="text-slate-400 font-medium">Strategy:</span>
-              <select
-                value={searchMode}
-                onChange={(e) => setSearchMode(e.target.value as SearchMode)}
-                className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
-              >
-                <option value="auto">Auto (Agent Decides)</option>
-                <option value="hybrid">Hybrid (Dense + Sparse)</option>
-                <option value="vector">Vector Only</option>
-                <option value="bm25">BM25 Keyword Only</option>
-              </select>
+              <span className="px-2 py-1.5 text-xs text-slate-200">
+                Hybrid (Dense + Sparse)
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-slate-400 font-medium">Top-K:</span>

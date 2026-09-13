@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-09-12 -->
+<!-- last_verified: 2026-09-13 -->
 # Retrieval (Phase 1)
 
 Single-tool RAG retrieval over Qdrant vectors + Neon registry/cache.
@@ -13,6 +13,25 @@ Single-tool RAG retrieval over Qdrant vectors + Neon registry/cache.
   `AccessFilter`. The old `POST /retrieval/search` route was removed with the
   API's RAG logic (2026-09-12).
 - Phases: retrieval now; direct ingestion (`rag/ingestion/index_document`) later; `services/auth` extraction later. No S3, no Lambda triggers in this package.
+- Search strategy is locked to `hybrid` (2026-09-13): the web client offers no mode choice and always sends `search_mode: "hybrid"`. The backend literal still accepts `semantic | hybrid | auto`, but `vector` / `bm25` were never valid on the wire (Pydantic 422) and retrieval has no keyword-only branch — standalone BM25 would be new `libs/rag` feature work, not alignment.
+- Evidence wire shape (2026-09-13): `done.sources` carries the last tool call's chunks as `{source, page?, chunk_index?, score?, snippet?}` — serialised `Source` dicts plus a snippet truncated to 300 chars (`SNIPPET_CHARS` in `agent/tools/search.py`). The web `toEvidence()` adapter (`lib/use-assistant-chat.ts`) maps these to `RAGSourceEvidence` (`doc_id ← source`, `title ← basename + page`); `score`/`snippet` stay optional and the panel hides those parts when absent instead of rendering `NaN%`/empty quotes. History reloads carry `sources: []` (per-turn sources are not persisted) — see Phase 5.
+
+## WebSocket wire protocol (`WS /ask`, 2026-09-13)
+
+| Direction | Message | Shape |
+|---|---|---|
+| Client → server | `auth` | `{type, access_token}` (short-lived `ws-ticket`; bad ticket → close `4401`) |
+| Server → client | `ready` | `{type, expires_at}` |
+| Client → server | `ask` | `{type, request_id, question, top_k?, search_mode: "hybrid", conversation_id?}` — one active ask per socket (`request_in_progress` otherwise) |
+| Server → client | `step` | `{type, request_id, name?, text?, query?, expanded_queries?, sources?}` — `name` is the graph node (`classify_intent`, `agent`, `tools`, …) or service note (`agent_budget`, memory compaction) |
+| Server → client | `token` | `{type, request_id, content}` — generation nodes only (classifier suppressed) |
+| Server → client | `done` | `{type, request_id, conversation_id, answer, sources, grounded, rewritten_question, workflow_steps}` |
+| Server → client | `error` | `{type, request_id?, code, text}` — `invalid_message`, `request_in_progress`, `invalid_request`, `not_found`, `forbidden`, `server_error` |
+| HTTP | `GET /conversations/{id}` | Owned history as `[{turn_index, question, answer, sources: [], created_at}]`; 404/403 on missing/forbidden |
+
+Parallel tool calls in one step merge (`sources`/`results` accumulate,
+`workflow_steps` last-wins); every LLM call is bounded by
+`AGENTIC_ASSISTANT_LLM_TIMEOUT_SECONDS` (default 120s).
 
 ## Pipeline
 

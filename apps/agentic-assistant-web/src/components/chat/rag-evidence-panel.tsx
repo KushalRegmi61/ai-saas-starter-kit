@@ -124,18 +124,26 @@ export function RagEvidencePanel({
                               {src.access_level}
                             </span>
                           )}
-                          <span
-                            className={`font-mono text-[10px] px-1.5 py-0.5 rounded-md border ${scoreColor(src.score)}`}
-                          >
-                            {(src.score * 100).toFixed(0)}%
-                          </span>
+                          {typeof src.score === "number" && (
+                            <span
+                              className={`font-mono text-[10px] px-1.5 py-0.5 rounded-md border ${scoreColor(src.score)}`}
+                            >
+                              {(src.score * 100).toFixed(0)}%
+                            </span>
+                          )}
                         </div>
                       </div>
 
                       {/* Snippet */}
-                      <p className="text-slate-400 text-[11px] line-clamp-3 italic leading-relaxed pl-4 border-l-2 border-indigo-500/25">
-                        &ldquo;{src.snippet}&rdquo;
-                      </p>
+                      {src.snippet ? (
+                        <p className="text-slate-400 text-[11px] line-clamp-3 italic leading-relaxed pl-4 border-l-2 border-indigo-500/25">
+                          &ldquo;{src.snippet}&rdquo;
+                        </p>
+                      ) : (
+                        <p className="text-slate-600 text-[11px] italic pl-4 border-l-2 border-slate-800">
+                          Snippet unavailable
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
