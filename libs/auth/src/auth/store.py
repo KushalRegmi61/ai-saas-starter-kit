@@ -7,6 +7,8 @@ libs/rag registry style; only public shapes (no password hash) are returned.
 
 from __future__ import annotations
 
+import json
+
 
 def ensure_assistant_tables(connection) -> None:
     connection.execute(
@@ -111,9 +113,15 @@ def record_audit_event(
     target_id: str | None,
     detail: dict | None = None,
 ) -> None:
+    try:
+        from psycopg.types.json import Json
+        payload = Json(detail or {})
+    except ImportError:
+        payload = json.dumps(detail or {})  # type: ignore[assignment]
+
     connection.execute(
         "INSERT INTO assistant_audit_events "
         "(actor_id, actor_email, action, resource, target_id, detail) "
         "VALUES (%s, %s, %s, %s, %s, %s)",
-        (actor_id, actor_email, action, resource, target_id, detail or {}),
+        (actor_id, actor_email, action, resource, target_id, payload),
     )

@@ -12,6 +12,8 @@ def tokenize(text: str) -> list[str]:
 
 
 def bm25_search(query: str, corpus_texts: list[str], top_k: int) -> list[tuple[int, float]]:
+    if not corpus_texts:
+        return []
     try:
         from rank_bm25 import BM25Okapi
     except ImportError as exc:
@@ -20,6 +22,9 @@ def bm25_search(query: str, corpus_texts: list[str], top_k: int) -> list[tuple[i
         ) from exc
 
     tokenized_corpus = [tokenize(t) for t in corpus_texts]
+    # BM25Okapi divides by corpus_size — skip if all tokens are empty
+    if not any(tokenized_corpus):
+        return []
     bm25 = BM25Okapi(tokenized_corpus)
     scores: list[float] = bm25.get_scores(tokenize(query))
     indexed = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)

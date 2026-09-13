@@ -7,6 +7,7 @@ bootstrap policy for the first admin.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from auth.crypto import hash_password, verify_password
@@ -22,17 +23,23 @@ from auth.store import list_users as store_list_users
 from auth.types import ASSISTANT_ROLES
 from psycopg_pool import ConnectionPool
 
+logger = logging.getLogger(__name__)
+
 
 def get_pool(database_url: str) -> ConnectionPool:
     """Open and synchronously validate the process-wide assistant pool."""
     if not database_url:
+        logger.warning("models: pool open rejected, database URL missing")
         raise ValueError("AGENTIC_ASSISTANT_DATABASE_URL is missing")
+    logger.info("models: opening assistant pool")
     pool = ConnectionPool(conninfo=database_url, min_size=1, max_size=10, open=True)
     try:
         pool.wait()
     except Exception:
+        logger.exception("models: pool wait failed")
         pool.close()
         raise
+    logger.info("models: assistant pool ready")
     return pool
 
 
@@ -52,8 +59,10 @@ def ensure_and_seed(connection: Any, admin_email: str, admin_password: str) -> d
     carrying a non-admin role. Empty credentials mean that operators are
     expected to provision an admin through another trusted database path.
     """
+    logger.info("models: ensure identity tables + seed check")
     ensure_assistant_tables(connection)
     if not admin_email and not admin_password:
+        logger.info("models: no seed credentials, skipping")
         return None
     if bool(admin_email) != bool(admin_password):
         raise ValueError(
@@ -66,7 +75,9 @@ def ensure_and_seed(connection: Any, admin_email: str, admin_password: str) -> d
         raise ValueError("AGENTIC_ASSISTANT_ADMIN_EMAIL must not be empty")
     existing = find_user_by_email(connection, email)
     if existing is not None:
+        logger.info("models: seed admin already exists email=%s", email)
         return {key: value for key, value in existing.items() if key != "password_hash"}
+    logger.info("models: seeding admin email=%s", email)
 
     user = insert_user(
         connection,
@@ -89,6 +100,7 @@ def ensure_and_seed(connection: Any, admin_email: str, admin_password: str) -> d
 def authenticate(connection: Any, email: str, password: str) -> dict | None:
     """Return a public user after recording a success or generic failure."""
     normalized_email = _normalize_email(email)
+    logger.info("models: authenticate email=%s", normalized_email)
     user = find_user_by_email(connection, normalized_email)
     if user is None or not verify_password(password, user["password_hash"]):
         record_audit_event(
@@ -102,6 +114,7 @@ def authenticate(connection: Any, email: str, password: str) -> dict | None:
         )
         return None
 
+    logger.info("models: authenticate success email=%s", normalized_email)
     record_audit_event(
         connection,
         actor_id=user["id"],
@@ -123,6 +136,7 @@ def create_user(
     actor_email: str | None = None,
 ) -> dict:
     _require_role(role)
+    logger.info("models: create user email=%s role=%s", _normalize_email(email), role)
     user = insert_user(
         connection,
         email=_normalize_email(email),
@@ -142,7 +156,10 @@ def create_user(
 
 
 def list_users(connection: Any) -> list[dict]:
-    return store_list_users(connection, limit=200)
+    logger.debug("models: list users")
+    result = store_list_users(connection, limit=200)
+    logger.debug("models: list users done count=%d", len(result))
+    return result
 
 
 def set_role(
@@ -154,8 +171,10 @@ def set_role(
     actor_email: str | None = None,
 ) -> dict | None:
     _require_role(role)
+    logger.info("models: set role user_id=%s role=%s", user_id, role)
     existing = find_user_by_id(connection, user_id)
     if existing is None:
+        logger.warning("models: set role user not found user_id=%s", user_id)
         return None
     updated = set_user_role(connection, user_id=user_id, role=role)
     if updated is None:

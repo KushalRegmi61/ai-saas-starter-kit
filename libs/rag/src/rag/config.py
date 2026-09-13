@@ -24,7 +24,11 @@ class RagSettings(BaseSettings):
     openai_retry_min_wait: float = 1.0
     openai_retry_max_wait: float = 10.0
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+    }
 
 
 @lru_cache

@@ -69,8 +69,15 @@ def _summary_prompt(existing_summary: str, turns: list[dict]) -> list:
 
 
 async def _summarize(existing_summary: str, turns: list[dict]) -> str:
-    response = await common._chat_model().ainvoke(_summary_prompt(existing_summary, turns))
-    return common._content_text(response.content).strip()
+    logger.info("memory: summarizing turns=%d", len(turns))
+    try:
+        response = await common._chat_model().ainvoke(_summary_prompt(existing_summary, turns))
+    except Exception:
+        logger.exception("memory: summarizer LLM call failed")
+        raise
+    text = common._content_text(response.content).strip()
+    logger.info("memory: summary done len=%d", len(text))
+    return text
 
 
 async def _try_summarize(existing_summary: str, turns: list[dict]) -> str | None:
@@ -87,6 +94,12 @@ async def _try_summarize(existing_summary: str, turns: list[dict]) -> str | None
 
 async def prepare_memory(snapshot: ConversationSnapshot) -> PreparedMemory:
     """Summarize evicted turns and retain the newest context within the budget."""
+    logger.info(
+        "memory: prepare start conversation_id=%s turns=%d summary_len=%d",
+        snapshot.conversation_id,
+        len(snapshot.turns),
+        len(snapshot.rolling_summary),
+    )
     settings = get_agent_settings()
     summary = snapshot.rolling_summary
     through = snapshot.summary_through_turn
@@ -117,10 +130,17 @@ async def prepare_memory(snapshot: ConversationSnapshot) -> PreparedMemory:
         changed = True
 
     if _memory_tokens(summary, retained) > settings.memory_max_tokens:
+        logger.info("memory: over budget, clipping summary")
         summary = _clip_tokens(summary, settings.memory_max_tokens)
         retained = []
         changed = True
 
+    logger.info(
+        "memory: prepare done retained=%d summary_len=%d changed=%s",
+        len(retained),
+        len(summary),
+        changed,
+    )
     return PreparedMemory(
         summary=summary,
         turns=retained,

@@ -1,36 +1,20 @@
-"""Workflow routing + grounding are pure logic; LLM/search are mocked."""
+"""Tests for the ReAct agent graph: routing, grounding, graph structure."""
 
+
+from langchain_core.messages import AIMessage
 from rag.types import AccessFilter, SearchResult, Source
 
-import agent.graph.nodes as nodes_mod
-import agent.graph.nodes.common as common_mod
-import agent.tools as tools_mod
-from agent.graph.nodes import (
-    check_grounding,
-    generate_answer,
-    grade_context,
-    route_after_grade,
-    sources_from_state,
-)
+from agent.graph.nodes import check_grounding, route_after_agent, route_after_classify
+from agent.graph.state import make_initial_state
 from agent.graph.workflow import get_agent_graph
 
 
 def _state(**kw):
-    base = {
-        "question": "q?",
-        "active_question": "q?",
-        "top_k": 4,
-        "search_mode": "auto",
-        "access_filter": AccessFilter(departments=["all"], max_access_level=3),
-        "conversation_history": [],
-        "attempts": 0,
-        "results": [],
-        "answer": "",
-        "sources": [],
-        "needs_rewrite": False,
-        "grounded": False,
-        "workflow_steps": [],
-    }
+    base = make_initial_state(
+        "q?",
+        access_filter=AccessFilter(departments=["all"], max_access_level=3),
+    )
+    base["workflow_steps"] = []
     base.update(kw)
     return base
 
@@ -39,88 +23,93 @@ def _result(text="t", source="s.pdf", score=0.9):
     return SearchResult(text=text, source=Source(source=source, score=score))
 
 
-def test_route_after_grade():
-    assert route_after_grade(_state(needs_rewrite=True)) == "rewrite"
-    assert route_after_grade(_state(needs_rewrite=False)) == "generate"
+# --------------------------------------------------------------------------- #
+# Routing tests                                                                #
+# --------------------------------------------------------------------------- #
+
+def test_route_after_classify_chitchat():
+    assert route_after_classify(_state(intent="chitchat")) == "chitchat"
 
 
-def test_grade_triggers_rewrite_on_low_score_first_attempt():
-    out = grade_context(_state(results=[_result(score=0.1)], attempts=0))
-    assert out["needs_rewrite"] is True
-    out = grade_context(_state(results=[_result(score=0.9)], attempts=0))
-    assert out["needs_rewrite"] is False
-    out = grade_context(_state(results=[_result(score=0.1)], attempts=1))
-    assert out["needs_rewrite"] is False
+def test_route_after_classify_needs_tools():
+    assert route_after_classify(_state(intent="needs_tools")) == "needs_tools"
 
 
-def test_generate_answers_unknown_without_results():
-    out = generate_answer(_state())
-    assert "do not know" in out["answer"].lower()
-    assert out["sources"] == []
+def test_route_after_classify_unknown_defaults_to_needs_tools():
+    assert route_after_classify(_state(intent="unknown_xyz")) == "needs_tools"
 
 
-def test_generate_uses_llm_with_context(monkeypatch):
-    class FakeResp:
-        content = "See s.pdf for the pto policy."
-
-    monkeypatch.setattr(common_mod, "_chat_model", lambda: FakeLLM())
-    out = generate_answer(_state(results=[_result()]))
-    assert "s.pdf" in out["answer"]
-    assert out["sources"] == [{"source": "s.pdf", "page": None, "chunk_index": None, "score": 0.9}]
+def test_route_after_agent_routes_to_tools_when_under_budget():
+    ai_msg = AIMessage(content="", tool_calls=[{"name": "search_knowledge_base",
+                                                  "args": {"question": "q"},
+                                                  "id": "call_1", "type": "tool_call"}])
+    state = _state(messages=[ai_msg], tool_call_count=1, loop_tokens_used=100)
+    assert route_after_agent(state) == "tools"
 
 
-class FakeLLM:
-    def invoke(self, messages, config=None):
-        return FakeLLMResp()
+def test_route_after_agent_ends_when_no_tool_calls():
+    ai_msg = AIMessage(content="Here is the answer.")
+    state = _state(messages=[ai_msg], tool_call_count=1, loop_tokens_used=100)
+    assert route_after_agent(state) == "generate"
 
 
-class FakeLLMResp:
-    content = "See s.pdf for the pto policy."
+def test_route_after_agent_ends_at_iteration_cap():
+    from agent.graph.nodes.agent import MAX_ITERATIONS
+    ai_msg = AIMessage(content="", tool_calls=[{"name": "search_knowledge_base",
+                                                  "args": {"question": "q"},
+                                                  "id": "call_2", "type": "tool_call"}])
+    state = _state(messages=[ai_msg], tool_call_count=MAX_ITERATIONS, loop_tokens_used=100)
+    assert route_after_agent(state) == "generate"
 
 
-def test_check_grounding():
-    grounded = check_grounding(
-        _state(
-            answer="Per s.pdf, pto accrues monthly.",
-            results=[_result()],
-            sources=[{"source": "s.pdf"}],
-        )
+def test_route_after_agent_ends_at_token_cap():
+    from agent.graph.nodes.agent import MAX_LOOP_TOKENS
+    ai_msg = AIMessage(content="", tool_calls=[{"name": "search_knowledge_base",
+                                                  "args": {"question": "q"},
+                                                  "id": "call_3", "type": "tool_call"}])
+    state = _state(messages=[ai_msg], tool_call_count=1, loop_tokens_used=MAX_LOOP_TOKENS)
+    assert route_after_agent(state) == "generate"
+
+
+def test_route_after_agent_ends_on_empty_messages():
+    assert route_after_agent(_state(messages=[])) == "generate"
+
+
+# --------------------------------------------------------------------------- #
+# Grounding tests                                                              #
+# --------------------------------------------------------------------------- #
+
+def test_check_grounding_true_when_source_cited():
+    state = _state(
+        answer="Per s.pdf, pto accrues monthly.",
+        results=[_result()],
+        sources=[{"source": "s.pdf"}],
     )
-    assert grounded["grounded"] is True
+    out = check_grounding(state)
+    assert out["grounded"] is True
+
+
+def test_check_grounding_true_for_abstain():
+    state = _state(
+        answer="I do not know.",
+        results=[_result()],
+        sources=[],
+    )
+    assert check_grounding(state)["grounded"] is True
+
+
+def test_check_grounding_false_when_no_results():
     assert check_grounding(_state(answer="hello", results=[], sources=[]))["grounded"] is False
-    assert (
-        check_grounding(_state(answer="I do not know.", results=[_result()], sources=[]))[
-            "grounded"
-        ]
-        is True
-    )
 
 
-def test_sources_from_state():
-    out = sources_from_state(_state(sources=[{"source": "a.pdf"}]))
-    assert out[0].source == "a.pdf"
-
+# --------------------------------------------------------------------------- #
+# Graph structure test                                                         #
+# --------------------------------------------------------------------------- #
 
 def test_graph_compiles_with_expected_nodes():
     graph = get_agent_graph()
-    assert set(graph.nodes.keys()) >= {
-        "retrieve",
-        "grade",
-        "rewrite",
-        "generate",
-        "grounding_check",
-    }
-
-
-def test_retrieve_uses_tool_boundary(monkeypatch):
-    seen = {}
-
-    class FakeTool:
-        def invoke(self, payload):
-            seen.update(payload)
-            return {"results": [], "question": payload["question"], "search_mode": "hybrid"}
-
-    monkeypatch.setattr(tools_mod, "make_rag_tools", lambda filt: [FakeTool()])
-    out = nodes_mod.retrieve_context(_state(active_question="pto?", top_k=3))
-    assert seen == {"question": "pto?", "top_k": 3, "search_mode": "auto"}
-    assert out["results"] == []
+    node_keys = set(graph.nodes.keys())
+    assert "classify_intent" in node_keys
+    assert "chitchat_respond" in node_keys
+    assert "agent" in node_keys
+    assert "tools" in node_keys

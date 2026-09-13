@@ -21,6 +21,7 @@ Reliability expectations and practices for this project.
 - Structured JSON logging via Python stdlib
 - Every request gets a `request_id` for tracing
 - Log levels: ERROR for failures, WARNING for degraded state, INFO for requests
+- The agentic-assistant service emits the same JSON schema (`timestamp`, `level`, `logger`, `service`, `message`) via `agent/logging_config.py::configure_logging`, with per-step INFO logs across lifespan, API routes, service orchestration, agent graph nodes, tools, and models. Secrets (tokens, passwords, API keys) are never logged — only configured True/False flags.
 
 ## Observability
 

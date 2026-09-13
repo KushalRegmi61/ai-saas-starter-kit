@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import uuid
 from functools import lru_cache
 
 from rag.config import get_rag_settings
@@ -27,7 +28,9 @@ def _cached_client():
 
 def _chunk_id(source: str, chunk_index: int, text: str, tenant: str = "default") -> str:
     raw = f"{tenant}:{source}:{chunk_index}:{text}"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(raw.encode("utf-8")).digest()
+    # Qdrant only accepts unsigned int or UUID point IDs — derive a stable UUID from the hash
+    return str(uuid.UUID(bytes=digest[:16]))
 
 
 def assert_collection_dimensions() -> None:
@@ -59,18 +62,25 @@ def assert_collection_dimensions() -> None:
 
 
 def ensure_collection() -> None:
-    """Create the chunks collection when missing (dimension-checked first)."""
+    """Create the chunks collection + payload indexes when missing (dimension-checked first)."""
     assert_collection_dimensions()  # no-op when missing/empty
-    from qdrant_client.http.models import Distance, VectorParams
+    from qdrant_client.http.models import Distance, PayloadSchemaType, VectorParams
 
     client = _cached_client()
     s = get_rag_settings()
-    if client.collection_exists(collection_name=s.qdrant_collection):
-        return
-    client.create_collection(
-        collection_name=s.qdrant_collection,
-        vectors_config=VectorParams(size=s.embedding_dimensions, distance=Distance.COSINE),
-    )
+    if not client.collection_exists(collection_name=s.qdrant_collection):
+        client.create_collection(
+            collection_name=s.qdrant_collection,
+            vectors_config=VectorParams(size=s.embedding_dimensions, distance=Distance.COSINE),
+        )
+    # Keyword indexes are required for all fields used in filter conditions
+    # (delete_chunks_by_source, _qdrant_filter, scroll_corpus).
+    for field in ("source", "tenant", "department", "access_level"):
+        client.create_payload_index(
+            collection_name=s.qdrant_collection,
+            field_name=field,
+            field_schema=PayloadSchemaType.KEYWORD,
+        )
 
 
 def upsert_chunks(chunks: list[object], vectors: list[list[float]]) -> int:
@@ -195,14 +205,18 @@ def scroll_corpus(
     s = get_rag_settings()
     docs: list[object] = []
     offset = None
-    while len(docs) < limit:
-        batch, offset = client.scroll(
-            collection_name=s.qdrant_collection,
-            limit=min(1000, limit - len(docs)),
-            offset=offset,
-            with_payload=True,
-            with_vectors=False,
-        )
+    while True:
+        try:
+            batch, offset = client.scroll(
+                collection_name=s.qdrant_collection,
+                limit=min(1000, limit - len(docs)),
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+        except Exception:
+            # Collection does not exist yet (no documents indexed)
+            return []
         if not batch:
             break
         for p in batch:
@@ -217,6 +231,6 @@ def scroll_corpus(
             }
             if passes_access_filter(meta, departments, max_access_level, tenant):
                 docs.append(SimpleDoc(text=str(payload.get("text", "")), metadata=meta))
-        if offset is None:
+        if offset is None or len(docs) >= limit:
             break
     return docs

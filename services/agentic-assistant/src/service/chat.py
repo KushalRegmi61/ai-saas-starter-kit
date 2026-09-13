@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 
 from auth.types import AssistantClaims
 from psycopg_pool import ConnectionPool
 
-from agent.graph.streaming import stream_answer
+from agent.graph.workflow import stream_graph
 from agent.types import AskRequest
 from models.conversations import (
     ConversationSnapshot,
@@ -19,6 +20,8 @@ from models.conversations import (
 )
 from service.memory import PreparedMemory, prepare_memory
 
+logger = logging.getLogger(__name__)
+
 
 async def stream_chat(
     pool: ConnectionPool,
@@ -26,6 +29,12 @@ async def stream_chat(
     claims: AssistantClaims,
 ) -> AsyncIterator[dict]:
     conversation_id = request.conversation_id or new_conversation_id()
+    logger.info(
+        "service chat: start conversation_id=%s new=%s question_len=%d",
+        conversation_id,
+        not request.conversation_id,
+        len(request.question),
+    )
     with pool.connection() as connection, conversation_lock(connection, conversation_id):
         if request.conversation_id:
             snapshot = load_snapshot(connection, conversation_id, claims.subject)
@@ -39,7 +48,14 @@ async def stream_chat(
                 turns=[],
             )
 
+        logger.info("service chat: preparing memory turns=%d", len(snapshot.turns))
         prepared = await prepare_memory(snapshot)
+        logger.info(
+            "service chat: memory ready turns=%d summary_len=%d changed=%s",
+            len(prepared.turns),
+            len(prepared.summary),
+            prepared.changed,
+        )
         if prepared.changed:
             yield {"type": "step", "text": "compacted conversation memory"}
             with connection.transaction():
@@ -51,7 +67,7 @@ async def stream_chat(
                 )
 
         final_event = None
-        async for event in stream_answer(
+        async for event in stream_graph(
             request.question,
             top_k=request.top_k,
             search_mode=request.search_mode,
@@ -65,7 +81,13 @@ async def stream_chat(
             yield event
 
         if final_event is None:
+            logger.warning("service chat: workflow ended without final event")
             raise RuntimeError("streaming workflow ended without a final event")
+        logger.info(
+            "service chat: workflow done answer_len=%d grounded=%s",
+            len(final_event["answer"]),
+            final_event["grounded"],
+        )
 
         with connection.transaction():
             append_exchange(
@@ -79,6 +101,7 @@ async def stream_chat(
         final_snapshot = _snapshot_after_exchange(prepared, request, final_event)
         compacted = await prepare_memory(final_snapshot)
         if compacted.changed:
+            logger.info("service chat: persisting compacted summary")
             with connection.transaction():
                 update_summary(
                     connection,
@@ -87,6 +110,7 @@ async def stream_chat(
                     summary_through_turn=compacted.summary_through_turn,
                 )
 
+        logger.info("service chat: done conversation_id=%s", conversation_id)
         yield {
             "type": "done",
             "conversation_id": conversation_id,

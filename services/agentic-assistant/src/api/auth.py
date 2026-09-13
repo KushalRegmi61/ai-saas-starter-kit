@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Literal
 
 from auth.tokens import mint_assistant_token, mint_assistant_ws_ticket
@@ -14,6 +15,8 @@ from pydantic import BaseModel, Field
 from agent.authz import require_jwt_admin, require_jwt_user
 from agent.config import get_agent_settings
 from models import users
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth")
 
@@ -38,6 +41,7 @@ class RoleUpdateRequest(BaseModel):
 def get_user_pool(request: Request) -> ConnectionPool:
     pool = getattr(request.app.state, "assistant_user_pool", None)
     if pool is None:
+        logger.warning("auth: user pool unavailable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Assistant authentication is not configured",
@@ -48,6 +52,7 @@ def get_user_pool(request: Request) -> ConnectionPool:
 def _require_jwt_secret() -> str:
     secret = get_agent_settings().assistant_jwt_secret
     if not secret:
+        logger.warning("auth: JWT secret unconfigured")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Assistant authentication is not configured",
@@ -65,11 +70,14 @@ def _invalid_login() -> HTTPException:
 
 @router.post("/login", response_model=LoginResponse)
 def login(payload: LoginRequest, pool: ConnectionPool = Depends(get_user_pool)) -> LoginResponse:
+    logger.info("auth: login attempt email=%s", payload.email.strip().lower())
     secret = _require_jwt_secret()
     with pool.connection() as connection:
         user = users.authenticate(connection, payload.email, payload.password)
     if user is None:
+        logger.warning("auth: login failed email=%s", payload.email.strip().lower())
         raise _invalid_login()
+    logger.info("auth: login success role=%s", user["role"])
 
     settings = get_agent_settings()
     token = mint_assistant_token(
@@ -90,6 +98,7 @@ def websocket_ticket(
     _pool: ConnectionPool = Depends(get_user_pool),
     claims: AssistantClaims = Depends(require_jwt_user),
 ) -> WebSocketTicketResponse:
+    logger.info("auth: ws-ticket mint subject=%s", claims.subject)
     secret = _require_jwt_secret()
     settings = get_agent_settings()
     return WebSocketTicketResponse(
@@ -109,6 +118,7 @@ def create_user(
     pool: ConnectionPool = Depends(get_user_pool),
     claims: AssistantClaims = Depends(require_jwt_admin),
 ) -> AssistantUser:
+    logger.info("auth: create user email=%s role=%s", payload.email.strip().lower(), payload.role)
     try:
         with pool.connection() as connection:
             return users.create_user(
@@ -119,10 +129,12 @@ def create_user(
                 actor_id=claims.subject,
             )
     except UniqueViolation:
+        logger.warning("auth: create user conflict email=%s", payload.email.strip().lower())
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Email already exists"
         ) from None
     except ValueError as exc:
+        logger.warning("auth: create user invalid: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from None
@@ -133,8 +145,11 @@ def list_users(
     pool: ConnectionPool = Depends(get_user_pool),
     _claims: AssistantClaims = Depends(require_jwt_admin),
 ) -> list[AssistantUser]:
+    logger.info("auth: list users")
     with pool.connection() as connection:
-        return users.list_users(connection)
+        result = users.list_users(connection)
+    logger.info("auth: list users done count=%d", len(result))
+    return result
 
 
 @router.patch("/users/{user_id}/role", response_model=AssistantUser)
@@ -144,7 +159,9 @@ def update_role(
     pool: ConnectionPool = Depends(get_user_pool),
     claims: AssistantClaims = Depends(require_jwt_admin),
 ) -> AssistantUser:
+    logger.info("auth: role change user_id=%s role=%s", user_id, payload.role)
     if claims.subject == user_id:
+        logger.warning("auth: admin self-role change blocked user_id=%s", user_id)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="An admin cannot change their own role",
@@ -157,5 +174,7 @@ def update_role(
             actor_id=claims.subject,
         )
     if user is None:
+        logger.warning("auth: role change user not found user_id=%s", user_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    logger.info("auth: role change done user_id=%s", user_id)
     return user

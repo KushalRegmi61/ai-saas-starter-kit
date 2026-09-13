@@ -41,9 +41,12 @@ async def ask_socket(websocket: WebSocket) -> None:
         return
 
     await websocket.accept()
+    logger.info("chat: websocket accepted, awaiting auth")
     claims = await _authenticate_socket(websocket, secret)
     if claims is None:
+        logger.warning("chat: websocket auth failed, closing")
         return
+    logger.info("chat: websocket authed role=%s subject=%s", claims.role, claims.subject)
 
     await websocket.send_json(
         {
@@ -91,9 +94,15 @@ async def ask_socket(websocket: WebSocket) -> None:
                 )
                 continue
 
+            logger.info(
+                "chat: ask received request_id=%s question_len=%d",
+                payload.get("request_id"),
+                len(str(payload.get("question", ""))),
+            )
             try:
                 socket_request = SocketAskRequest.model_validate(payload)
             except ValidationError as exc:
+                logger.warning("chat: invalid request: %s", exc)
                 await _send_json(
                     websocket,
                     send_lock,
@@ -154,6 +163,11 @@ async def _run_request(
         search_mode=socket_request.search_mode,
         conversation_id=socket_request.conversation_id,
     )
+    logger.info(
+        "chat: request start request_id=%s conversation_id=%s",
+        socket_request.request_id,
+        socket_request.conversation_id,
+    )
     try:
         async for event in stream_chat(pool, request, claims):
             await _send_json(
@@ -161,11 +175,14 @@ async def _run_request(
                 send_lock,
                 {**event, "request_id": socket_request.request_id},
             )
+        logger.info("chat: request done request_id=%s", socket_request.request_id)
     except ConversationNotFound:
+        logger.warning("chat: conversation not found request_id=%s", socket_request.request_id)
         await _send_error(
             websocket, send_lock, socket_request.request_id, "not_found", "Conversation not found"
         )
     except ConversationForbidden:
+        logger.warning("chat: conversation forbidden request_id=%s", socket_request.request_id)
         await _send_error(
             websocket,
             send_lock,
@@ -174,9 +191,10 @@ async def _run_request(
             "Conversation access denied",
         )
     except WebSocketDisconnect:
+        logger.info("chat: client disconnected request_id=%s", socket_request.request_id)
         raise
     except Exception:
-        logger.exception("WebSocket assistant request failed")
+        logger.exception("WebSocket assistant request failed request_id=%s", socket_request.request_id)
         await _send_error(
             websocket,
             send_lock,
@@ -213,11 +231,15 @@ def conversation_history(
     pool=Depends(get_user_pool),
     claims: AssistantClaims = Depends(require_jwt_user),
 ) -> list[ConversationTurn]:
+    logger.info("chat: history fetch conversation_id=%s", conversation_id)
     try:
         with pool.connection() as connection:
             history = get_full_history(connection, conversation_id, claims.subject)
+        logger.info("chat: history done turns=%d", len(history))
         return [ConversationTurn(**turn) for turn in history]
     except ConversationNotFound:
+        logger.warning("chat: history not found conversation_id=%s", conversation_id)
         raise HTTPException(status_code=404, detail="Conversation not found") from None
     except ConversationForbidden:
+        logger.warning("chat: history forbidden conversation_id=%s", conversation_id)
         raise HTTPException(status_code=403, detail="Conversation access denied") from None

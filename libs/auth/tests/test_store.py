@@ -104,4 +104,5 @@ def test_audit_event_records_action():
     sql, params = conn.statements[0]
     assert "assistant_audit_events" in sql
     assert params[2] == "create_user"
-    assert params[5] == {"role": "manager"}
+    val = params[5]
+    assert getattr(val, "obj", val) == {"role": "manager"}

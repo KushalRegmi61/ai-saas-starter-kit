@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any
 
 from agent.config import get_agent_settings
 
@@ -28,13 +27,18 @@ def get_langfuse_client():
         except ImportError as exc:
             raise ImportError("langfuse package is required. Run: pip install langfuse") from exc
         settings = get_agent_settings()
-        kwargs: dict[str, Any] = {
+        logger.info(
+            "tracing: initialising LangFuse base_url_configured=%s",
+            bool(settings.langfuse_base_url),
+        )
+        kwargs: dict[str, str] = {
             "public_key": settings.langfuse_public_key,
             "secret_key": settings.langfuse_secret_key,
         }
         if settings.langfuse_base_url:
             kwargs["base_url"] = settings.langfuse_base_url
         _langfuse_client = Langfuse(**kwargs)
+        logger.info("tracing: LangFuse client ready")
     return _langfuse_client
 
 
@@ -64,8 +68,10 @@ def trace_span(
             span["output"] = {"answer_length": len(result)}
     """
     if not is_tracing_enabled():
+        logger.debug("tracing: disabled, span skipped name=%s", name)
         yield {}
         return
+    logger.info("tracing: span start name=%s", name)
     client = get_langfuse_client()
     observation = client.start_observation(name=name, input=input_data, metadata=metadata)
     observation_id = getattr(observation, "observation_id", None) or getattr(
@@ -77,6 +83,7 @@ def trace_span(
         if span_dict.get("output") is not None:
             observation.update(output=span_dict["output"])
         observation.end()
+        logger.info("tracing: span end name=%s", name)
     except Exception:
         observation.update(level="ERROR")
         observation.end()
@@ -89,16 +96,13 @@ def trace_span(
 def get_langchain_callbacks() -> list:
     """LangChain callbacks for auto-traced LLM calls; [] when disabled."""
     if not is_tracing_enabled():
+        logger.debug("tracing: callbacks disabled")
         return []
     try:
         from langfuse.langchain import CallbackHandler
     except ImportError:
         return []
-    settings = get_agent_settings()
-    kwargs: dict[str, Any] = {
-        "public_key": settings.langfuse_public_key,
-        "secret_key": settings.langfuse_secret_key,
-    }
-    if settings.langfuse_base_url:
-        kwargs["base_url"] = settings.langfuse_base_url
-    return [CallbackHandler(**kwargs)]
+    # Langfuse v4: CallbackHandler only accepts `public_key` and `trace_context`.
+    # Credentials are already configured on the global client (see get_langfuse_client).
+    get_langfuse_client()  # ensure global client is initialised
+    return [CallbackHandler()]

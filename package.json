@@ -10,6 +10,7 @@
     "dev:apps": "pnpm --filter \"./apps/*\" --parallel dev",
     "dev:all": "concurrently \"pnpm dev:web\" \"pnpm dev:assistant-web\" \"pnpm dev:api\"",
     "dev:api": "cd services/api && ../../.venv/bin/uvicorn main:app --reload --port ${API_PORT:-8000}",
+    "dev:agent": "uvicorn services.agentic-assistant.main:app --reload --port ${AGENT_PORT:-8001}",
     "stripe:seed": "node scripts/sync-stripe-env.mjs",
     "stripe:listen": "stripe listen --forward-to localhost:${API_PORT:-8000}/billing/webhook",
     "build": "pnpm --filter @ai-saas-starter-kit/web build",

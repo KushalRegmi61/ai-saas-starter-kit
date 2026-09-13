@@ -10,6 +10,7 @@ tools, so visibility follows the role ladder while mutations stay admin-only.
 
 from __future__ import annotations
 
+import logging
 import secrets
 
 from auth.mapping import UnknownRole, role_to_filter
@@ -20,6 +21,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from rag.types import AccessFilter
 
 from agent.config import get_agent_settings
+
+logger = logging.getLogger(__name__)
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -45,16 +48,20 @@ def _valid_service_token(credentials: HTTPAuthorizationCredentials | None) -> bo
 def get_claims(credentials: HTTPAuthorizationCredentials | None) -> AssistantClaims:
     """Verify a bearer assistant JWT. Raises 401 when absent or invalid."""
     if credentials is None or not _jwt_configured():
+        logger.warning("auth: JWT missing or unconfigured")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing or unconfigured user credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
     try:
-        return decode_assistant_token(
+        claims = decode_assistant_token(
             credentials.credentials, secret=get_agent_settings().assistant_jwt_secret
         )
+        logger.info("auth: JWT verified role=%s subject=%s", claims.role, claims.subject)
+        return claims
     except InvalidToken as exc:
+        logger.warning("auth: invalid JWT: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(exc),
@@ -68,10 +75,12 @@ def require_admin(claims: AssistantClaims) -> AssistantClaims:
     this check — not the filter — is what makes admin the upload/delete
     role. Raises 403 for every other known role."""
     if claims.role != "admin":
+        logger.warning("auth: non-admin blocked role=%s subject=%s", claims.role, claims.subject)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin role required",
         )
+    logger.debug("auth: admin gate passed subject=%s", claims.subject)
     return claims
 
 
@@ -100,6 +109,7 @@ def require_service_or_admin(
     claims for human (JWT) callers, None for machine (service token) callers.
     Raises 503 when neither credential is configured, else 401/403."""
     if _valid_service_token(credentials):
+        logger.info("auth: service-token caller accepted")
         return None
     if credentials is not None and _jwt_configured():
         try:
@@ -107,14 +117,20 @@ def require_service_or_admin(
                 credentials.credentials, secret=get_agent_settings().assistant_jwt_secret
             )
         except InvalidToken:
+            logger.warning("auth: mutation route presented invalid JWT")
             claims = None
         if claims is not None:
+            logger.info(
+                "auth: JWT caller accepted role=%s subject=%s", claims.role, claims.subject
+            )
             return require_admin(claims)
     if not _service_configured() and not _jwt_configured():
+        logger.warning("auth: mutation route hit with no credentials configured")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Ingestion not configured",
         )
+    logger.warning("auth: mutation route rejected (invalid credentials)")
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid credentials",
@@ -127,14 +143,22 @@ def claims_to_access_filter(claims: AssistantClaims, *, tenant: str) -> AccessFi
     403 for roles outside the service policy; empty tenant fails loud (the
     caller's bug, never silently unscoped)."""
     if not tenant:
+        logger.warning("auth: empty tenant for subject=%s", claims.subject)
         raise ValueError("tenant must be a non-empty string")
     try:
         spec = role_to_filter(claims.role, tenant=tenant)
     except UnknownRole as exc:
+        logger.warning("auth: unknown role=%s", claims.role)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(exc),
         ) from None
+    logger.debug(
+        "auth: filter resolved role=%s tenant=%s level=%s",
+        claims.role,
+        tenant,
+        spec.max_access_level,
+    )
     return AccessFilter(
         departments=spec.departments,
         max_access_level=spec.max_access_level,

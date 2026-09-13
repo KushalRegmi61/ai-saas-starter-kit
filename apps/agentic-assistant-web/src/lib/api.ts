@@ -9,7 +9,7 @@ import type {
 } from "../types";
 
 export const ASSISTANT_API_BASE =
-  process.env.NEXT_PUBLIC_ASSISTANT_API_URL || "http://localhost:8001";
+  process.env.NEXT_PUBLIC_ASSISTANT_API_URL || "http://localhost:8000";
 
 export class ApiError extends Error {
   constructor(

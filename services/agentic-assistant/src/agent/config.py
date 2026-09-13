@@ -1,9 +1,12 @@
 """Agent settings: LLM + LangFuse + host tenant identity. Depends only on types."""
 
+import logging
 from functools import lru_cache
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class AgentSettings(BaseSettings):
@@ -59,10 +62,30 @@ class AgentSettings(BaseSettings):
     ws_ticket_ttl_seconds: int = Field(
         default=60, gt=0, validation_alias="AGENTIC_ASSISTANT_WS_TICKET_TTL_SECONDS"
     )
+    cors_allowed_origins: list[str] = Field(
+        default=["http://localhost:3000", "http://localhost:3001"],
+        validation_alias="AGENTIC_ASSISTANT_CORS_ORIGINS",
+    )
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+    }
 
 
 @lru_cache
 def get_agent_settings() -> AgentSettings:
-    return AgentSettings()
+    settings = AgentSettings()
+    logger.info(
+        "agent settings loaded: model=%s tenant=%s openai_configured=%s "
+        "langfuse_configured=%s service_token_configured=%s jwt_configured=%s db_configured=%s",
+        settings.openai_chat_model,
+        settings.default_tenant,
+        bool(settings.openai_api_key),
+        bool(settings.langfuse_public_key and settings.langfuse_secret_key),
+        bool(settings.agent_service_token),
+        bool(settings.assistant_jwt_secret),
+        bool(settings.agentic_assistant_database_url),
+    )
+    return settings

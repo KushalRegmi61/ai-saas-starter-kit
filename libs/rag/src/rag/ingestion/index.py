@@ -43,6 +43,7 @@ def index_document(
     department/access_level win over filename inference for BOTH payload and
     registry (previously the payload kept the inferred values — fixed here).
     """
+    ensure_collection()
     tn = normalize_tenant(tenant)
     docs = load_bytes(content, filename)
     if not docs:
@@ -73,7 +74,6 @@ def index_document(
     vectors: list[list[float]] = []
     for i in range(0, len(chunks), EMBED_BATCH_SIZE):
         vectors.extend(embed_texts([c.text for c in chunks[i : i + EMBED_BATCH_SIZE]]))
-    ensure_collection()
     indexed = upsert_chunks(chunks, vectors)
     with get_conn() as conn:
         upsert_document(

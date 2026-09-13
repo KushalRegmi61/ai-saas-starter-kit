@@ -34,8 +34,15 @@ async def ingest_endpoint(
     _authed: AssistantClaims | None = Depends(require_service_or_admin),
 ) -> IngestionResult:
     content = await file.read()
+    logger.info(
+        "ingest: start filename=%s source=%s size=%d tenant=%s",
+        file.filename,
+        source,
+        len(content),
+        tenant,
+    )
     try:
-        return index_document(
+        result = index_document(
             content,
             file.filename or source,
             source=source,
@@ -43,8 +50,14 @@ async def ingest_endpoint(
             access_level=access_level,
             tenant=tenant,
         )
+        logger.info("ingest: done source=%s", source)
+        return result
     except ValueError as e:
+        logger.warning("ingest: rejected source=%s: %s", source, e)
         raise HTTPException(status_code=422, detail=str(e)) from None
+    except Exception:
+        logger.exception("ingest: failed source=%s", source)
+        raise
 
 
 @router.delete("/sources")
@@ -53,9 +66,11 @@ def delete_source_endpoint(
     tenant: str | None = None,
     _authed: AssistantClaims | None = Depends(require_service_or_admin),
 ) -> dict[str, bool]:
+    logger.info("ingest: purge start source=%s tenant=%s", source, tenant)
     try:
         delete_indexed_source(source, tenant=tenant)
     except Exception:
         logger.exception("RAG purge failed: source=%s", source)
         return {"purged": False}
+    logger.info("ingest: purge done source=%s", source)
     return {"purged": True}

@@ -347,23 +347,31 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-slate-400 mb-1">Department</label>
-                    <input
-                      type="text"
+                    <select
                       value={department}
                       onChange={(e) => setDepartment(e.target.value)}
-                      placeholder="engineering"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200"
-                    />
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none"
+                    >
+                      <option value="">— infer from filename —</option>
+                      <option value="general">general</option>
+                      <option value="hr">hr</option>
+                      <option value="security">security</option>
+                      <option value="product">product</option>
+                      <option value="finance">finance</option>
+                    </select>
                   </div>
                   <div>
                     <label className="block text-slate-400 mb-1">Access Level</label>
-                    <input
-                      type="text"
+                    <select
                       value={accessLevel}
                       onChange={(e) => setAccessLevel(e.target.value)}
-                      placeholder="internal"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200"
-                    />
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none"
+                    >
+                      <option value="public">public</option>
+                      <option value="internal">internal</option>
+                      <option value="confidential">confidential</option>
+                      <option value="restricted">restricted</option>
+                    </select>
                   </div>
                 </div>
                 <button

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class ConversationNotFound(LookupError):
@@ -27,6 +30,7 @@ class ConversationSnapshot:
 
 
 def ensure_conversation_tables(connection: Any) -> None:
+    logger.info("models: ensuring conversation tables")
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS assistant_conversations (
@@ -82,6 +86,7 @@ def load_snapshot(
     if row[0] != owner_subject:
         raise ConversationForbidden(conversation_id)
 
+    logger.info("models: load snapshot conversation_id=%s", conversation_id)
     turns = connection.execute(
         """
         SELECT turn_index, role, content
@@ -91,6 +96,7 @@ def load_snapshot(
         """,
         (conversation_id, row[2]),
     ).fetchall()
+    logger.info("models: snapshot loaded turns=%d", len(turns))
     return ConversationSnapshot(
         conversation_id=conversation_id,
         owner_subject=row[0],
@@ -101,6 +107,7 @@ def load_snapshot(
 
 
 def get_full_history(connection: Any, conversation_id: str, owner_subject: str) -> list[dict]:
+    logger.info("models: history fetch conversation_id=%s", conversation_id)
     snapshot = load_snapshot(connection, conversation_id, owner_subject)
     rows = connection.execute(
         """
@@ -124,6 +131,12 @@ def append_exchange(
     question: str,
     answer: str,
 ) -> int:
+    logger.info(
+        "models: append exchange conversation_id=%s q_len=%d a_len=%d",
+        conversation_id,
+        len(question),
+        len(answer),
+    )
     connection.execute(
         """
         INSERT INTO assistant_conversations (conversation_id, owner_subject)
@@ -171,6 +184,12 @@ def update_summary(
     summary: str,
     summary_through_turn: int,
 ) -> None:
+    logger.info(
+        "models: update summary conversation_id=%s through=%d len=%d",
+        conversation_id,
+        summary_through_turn,
+        len(summary),
+    )
     connection.execute(
         """
         UPDATE assistant_conversations

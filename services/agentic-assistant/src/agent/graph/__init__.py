@@ -1,5 +1,5 @@
-"""LangGraph assistant workflow: retrieve -> grade -> rewrite/generate -> grounding."""
+"""LangGraph assistant workflow."""
 
-from agent.graph.workflow import ask, get_agent_graph
+from agent.graph.workflow import ask, get_agent_graph, stream_graph
 
-__all__ = ["ask", "get_agent_graph"]
+__all__ = ["ask", "get_agent_graph", "stream_graph"]
