@@ -21,6 +21,9 @@ dependencies = [
     "langchain-text-splitters>=0.3",
 ]
 
+[dependency-groups]
+dev = ["ruff>=0.15.22", "pytest>=9.1.1"]
+
 [build-system]
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"

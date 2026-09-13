@@ -8,6 +8,9 @@ requires-python = ">=3.11"
 # Consumed by ai-saas-api (services/api) and ai-saas-worker (services/worker).
 dependencies = []
 
+[dependency-groups]
+dev = ["ruff>=0.15.22", "pytest>=9.1.1"]
+
 [build-system]
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"

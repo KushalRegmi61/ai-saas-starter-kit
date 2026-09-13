@@ -123,3 +123,14 @@ def test_python_tasks_are_safe_to_run_from_repository_root(monkeypatch):
     api = next(project for project in result["python_projects"] if project["path"] == "services/api")
     assert "cd " not in api["run"]
     assert "pytest services/api" in api["run"]
+
+
+def test_python_projects_declare_ci_tools():
+    for path in (
+        "services/worker",
+        "services/shared",
+        "libs/auth",
+        "libs/rag",
+    ):
+        manifest = REPO_ROOT / path / "pyproject.toml"
+        assert "dev" in manifest.read_text(encoding="utf-8")
