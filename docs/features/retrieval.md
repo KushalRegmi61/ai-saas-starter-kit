@@ -28,6 +28,7 @@ Single-tool RAG retrieval over Qdrant vectors + Neon registry/cache.
 | Server → client | `done` | `{type, request_id, conversation_id, answer, sources, grounded, rewritten_question, workflow_steps}` |
 | Server → client | `error` | `{type, request_id?, code, text}` — `invalid_message`, `request_in_progress`, `invalid_request`, `not_found`, `forbidden`, `server_error` |
 | HTTP | `GET /conversations/{id}` | Owned history as `[{turn_index, question, answer, sources: [], created_at}]`; 404/403 on missing/forbidden |
+| HTTP | `GET /sources` | Admin/service registry listing (`tenant` query optional, absent = all tenants) as `[{tenant, source, department?, access_level?, chunks_count, indexed_at?, status}]`; feeds the Admin Console indexed-documents table |
 
 The assistant chat path uses async psycopg/Qdrant/OpenAI adapters; semantic and
 corpus retrieval run concurrently, while CPU-only ranking is isolated from the
@@ -62,8 +63,10 @@ Caller passes `AccessFilter(departments, max_access_level)`; rag only enforces. 
 
 - Trigger: `finalize_upload` (`services/api/app/service/upload.py`) best-effort forwards via `_maybe_index_in_rag` → `repo/ingest_client.index_document_remote` → `POST /ingest` on the agentic-assistant service (service-token auth). PDF + plain text (`.txt/.md`) only; skipped (`rag_indexed=false`) when the agent service is unconfigured or forwarding fails.
 - Engine: `rag.ingestion.index_document` now runs inside `services/agentic-assistant` (`src/api/ingest.py`, dual-authed via `agent/authz.py`); retrieval stays an agent-internal tool with no HTTP route.
+- Async contract: `POST /ingest` validates (non-empty, `.txt/.md/.pdf`) then returns `202 {job_id}` at once; indexing runs on FastAPI `BackgroundTasks` (`src/service/ingest_jobs.py`) and callers poll `GET /ingest/{job_id}` (`queued|running|done|failed`). Jobs are in-memory — a restart loses them, but retry is idempotent via content-hash dedup. The `services/api` forwarder treats 200/202 as accepted. Tenant-less ingests (browser uploads) inherit `AGENTIC_ASSISTANT_TENANT` so they land where chat reads; explicit tenants (service forwarders) pass through untouched.
 - Metadata: explicit `department`/`access_level` args win; else filename-prefix inference (`infer_document_metadata`); else `general`/`internal`. Unknown explicit values are rejected (400) by the API before forwarding.
 - Idempotency: SHA-256 over loaded doc texts; a matching registry `content_hash` for the source skips re-index (0 chunks). Otherwise old chunks are replaced and the query cache flushed.
 - Failure contract: indexing never fails the upload — errors log and `FileUploadResponse` returns `rag_indexed=false`.
 - Delete purges: file deletion best-effort calls the agent `DELETE /sources` (Qdrant chunks + registry row + cache flush); the B2 delete stands regardless.
+- Qdrant writes: points go up in batches of 100 with a 60s client timeout (`QDRANT_TIMEOUT_SECONDS`) — a whole document in one request trips the default 5s write timeout against Qdrant Cloud.
 - Deferred: background jobs, docx loaders.

@@ -35,7 +35,11 @@ def index_document_remote(
     access_level: str | None = None,
     tenant: str | None = None,
 ) -> bool:
-    """Forward one document to the agent ingest endpoint. Never raises."""
+    """Forward one document to the agent ingest endpoint. Never raises.
+
+    The agent queues indexing as a background job: both 200 (legacy sync)
+    and 202 (queued) count as accepted.
+    """
     auth = _auth()
     if auth is None:
         return False
@@ -55,7 +59,7 @@ def index_document_remote(
             headers={"Authorization": f"Bearer {token}"},
             timeout=_TIMEOUT_SECONDS,
         )
-        return resp.status_code == 200
+        return resp.status_code in (200, 202)
     except Exception:
         logger.exception("Agent ingest forward failed: source=%s", source)
         return False

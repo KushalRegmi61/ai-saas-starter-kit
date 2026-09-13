@@ -20,6 +20,10 @@ from __future__ import annotations
 
 import logging
 
+# Optional[] (not `| None`): langgraph only recognises this spelling for
+# runtime config injection (RunnableCallable KWARGS_CONFIG_KEYS).
+from typing import Optional
+
 from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 
@@ -57,7 +61,7 @@ _BUDGET_WARNING = (
 )
 
 
-async def agent_node(state: AgentState, config: RunnableConfig | None = None) -> dict:
+async def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> dict:  # noqa: UP045
     """ReAct reasoning node — one Thought→(Action) iteration."""
     import agent.tools as tools_mod
 

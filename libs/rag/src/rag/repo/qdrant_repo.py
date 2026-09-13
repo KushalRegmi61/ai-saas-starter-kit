@@ -18,7 +18,11 @@ def _client():
     s = get_rag_settings()
     if not s.qdrant_url:
         raise ValueError("QDRANT_URL is missing. Set it before retrieval.")
-    return QdrantClient(url=s.qdrant_url, api_key=s.qdrant_api_key or None)
+    # Generous write budget: upserts carry full chunk texts + vectors to
+    # Qdrant Cloud over WAN; the client default (5s) trips on large documents.
+    return QdrantClient(
+        url=s.qdrant_url, api_key=s.qdrant_api_key or None, timeout=s.qdrant_timeout_seconds
+    )
 
 
 def _async_client():
@@ -29,7 +33,9 @@ def _async_client():
     s = get_rag_settings()
     if not s.qdrant_url:
         raise ValueError("QDRANT_URL is missing. Set it before retrieval.")
-    return AsyncQdrantClient(url=s.qdrant_url, api_key=s.qdrant_api_key or None)
+    return AsyncQdrantClient(
+        url=s.qdrant_url, api_key=s.qdrant_api_key or None, timeout=s.qdrant_timeout_seconds
+    )
 
 
 @lru_cache(maxsize=1)
@@ -94,8 +100,15 @@ def ensure_collection() -> None:
         )
 
 
+UPSERT_BATCH_SIZE = 100
+
+
 def upsert_chunks(chunks: list[object], vectors: list[list[float]]) -> int:
-    """Upsert chunk texts + vectors with Phase 1 read payload keys. Returns count."""
+    """Upsert chunk texts + vectors with Phase 1 read payload keys. Returns count.
+
+    Points go up in bounded batches: a whole document in one request is a
+    multi-MB body that trips the client write timeout on WAN links.
+    """
     from qdrant_client.http.models import PointStruct
 
     if len(chunks) != len(vectors):
@@ -126,7 +139,9 @@ def upsert_chunks(chunks: list[object], vectors: list[list[float]]) -> int:
                 },
             )
         )
-    _cached_client().upsert(collection_name=s.qdrant_collection, points=points)
+    client = _cached_client()
+    for i in range(0, len(points), UPSERT_BATCH_SIZE):
+        client.upsert(collection_name=s.qdrant_collection, points=points[i : i + UPSERT_BATCH_SIZE])
     return len(points)
 
 

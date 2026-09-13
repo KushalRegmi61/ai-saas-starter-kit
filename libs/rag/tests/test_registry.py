@@ -6,6 +6,7 @@ from rag.repo.neon_repo import (
     delete_document,
     ensure_tables,
     get_document,
+    list_documents,
     update_mtime,
     upsert_document,
 )
@@ -44,6 +45,35 @@ def test_delete_document_issues_delete():
     sql = conn.execute.call_args.args[0]
     assert "DELETE FROM documents" in sql
     assert "tenant = %s" in sql
+
+
+def test_list_documents_spans_all_tenants_by_default():
+    from datetime import datetime
+
+    conn = MagicMock()
+    conn.execute.return_value.fetchall.return_value = [
+        ("api", "b.pdf", "hr", "internal", 2, datetime(2026, 9, 13), "indexed"),
+        ("default", "a.pdf", None, None, 0, None, "indexed"),
+    ]
+    rows = list_documents(conn)
+    sql, params = conn.execute.call_args.args[0], conn.execute.call_args.args[1:]
+    assert "FROM documents" in sql
+    assert "ORDER BY indexed_at DESC" in sql
+    assert "WHERE tenant" not in sql
+    assert not params
+    assert rows[0]["source"] == "b.pdf"
+    assert rows[0]["tenant"] == "api"
+    assert rows[0]["indexed_at"] == "2026-09-13T00:00:00"
+    assert rows[1]["indexed_at"] is None
+
+
+def test_list_documents_scopes_to_tenant_when_given():
+    conn = MagicMock()
+    conn.execute.return_value.fetchall.return_value = []
+    assert list_documents(conn, tenant="api") == []
+    sql, params = conn.execute.call_args.args[0], conn.execute.call_args.args[1:]
+    assert "WHERE tenant = %s" in sql
+    assert params == (("api",),)
 
 
 def test_ensure_tables_includes_file_mtime():

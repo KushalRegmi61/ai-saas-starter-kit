@@ -80,6 +80,16 @@ def test_upsert_ids_stable_across_calls(monkeypatch):
     assert first_ids == second_ids
 
 
+def test_upsert_batches_large_payload(monkeypatch):
+    client = _mock_client(monkeypatch, _settings())
+    chunks = [_doc(text=f"chunk {i}", chunk_index=i) for i in range(250)]
+    vectors = [[0.1] * 4 for _ in range(250)]
+    assert qr.upsert_chunks(chunks, vectors) == 250
+    assert client.upsert.call_count == 3
+    sizes = [len(call.kwargs["points"]) for call in client.upsert.call_args_list]
+    assert sizes == [100, 100, 50]
+
+
 def test_upsert_empty_returns_zero(monkeypatch):
     client = _mock_client(monkeypatch, _settings())
     assert qr.upsert_chunks([], []) == 0

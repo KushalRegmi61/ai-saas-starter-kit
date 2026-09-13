@@ -162,6 +162,35 @@ def get_document(connection, source: str, tenant: str | None = None) -> dict | N
     }
 
 
+def list_documents(connection, tenant: str | None = None) -> list[dict]:
+    """List indexed sources, newest first. tenant=None spans all tenants."""
+    if tenant is None:
+        rows = connection.execute(
+            "SELECT tenant, source, department, access_level, "
+            "chunks_count, indexed_at, status FROM documents "
+            "ORDER BY indexed_at DESC NULLS LAST, source ASC"
+        ).fetchall()
+    else:
+        rows = connection.execute(
+            "SELECT tenant, source, department, access_level, "
+            "chunks_count, indexed_at, status FROM documents "
+            "WHERE tenant = %s ORDER BY indexed_at DESC NULLS LAST, source ASC",
+            (normalize_tenant(tenant),),
+        ).fetchall()
+    return [
+        {
+            "tenant": row[0],
+            "source": row[1],
+            "department": row[2],
+            "access_level": row[3],
+            "chunks_count": row[4],
+            "indexed_at": row[5].isoformat() if row[5] else None,
+            "status": row[6],
+        }
+        for row in rows
+    ]
+
+
 def upsert_document(
     connection,
     source: str,

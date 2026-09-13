@@ -9,6 +9,7 @@ class RagSettings(BaseSettings):
     qdrant_url: str = ""
     qdrant_api_key: str = ""
     qdrant_collection: str = "chunks"
+    qdrant_timeout_seconds: int = 60
     agentic_assistant_database_url: str = ""
     openai_api_key: str = ""
     openai_base_url: str = ""

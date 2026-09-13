@@ -18,6 +18,10 @@ from __future__ import annotations
 import json
 import logging
 
+# Optional[] (not `| None`): langgraph only recognises this spelling for
+# runtime config injection (RunnableCallable KWARGS_CONFIG_KEYS).
+from typing import Optional
+
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 
@@ -56,7 +60,7 @@ Return ONLY the JSON. No explanation, no markdown, no extra text.\
 
 
 async def classify_intent(
-    state: AgentState, config: RunnableConfig | None = None
+    state: AgentState, config: Optional[RunnableConfig] = None  # noqa: UP045
 ) -> dict:
     """Classify intent and select tools. Appends HumanMessage to messages."""
     logger.info("node classify: start question_len=%d", len(state.get("question", "")))

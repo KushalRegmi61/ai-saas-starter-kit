@@ -10,15 +10,18 @@ import {
   CheckCircle2,
   AlertCircle,
   RefreshCw,
+  FileText,
 } from "lucide-react";
 import {
   listAssistantUsers,
   createAssistantUser,
   updateAssistantUserRole,
   ingestDocument,
+  getIngestStatus,
   deleteSource,
+  listSources,
 } from "../../lib/api";
-import type { AssistantUser, AssistantRole } from "../../types";
+import type { AssistantUser, AssistantRole, IndexedDocument } from "../../types";
 
 interface AdminDashboardProps {
   token: string | null;
@@ -49,6 +52,31 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
   const [deleteSourceInput, setDeleteSourceInput] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteResult, setDeleteResult] = useState<string | null>(null);
+
+  // Indexed Sources State
+  const [sources, setSources] = useState<IndexedDocument[]>([]);
+  const [isLoadingSources, setIsLoadingSources] = useState(false);
+  const [sourcesError, setSourcesError] = useState<string | null>(null);
+  const [purgingSource, setPurgingSource] = useState<string | null>(null);
+
+  const fetchSources = React.useCallback(async () => {
+    if (!token) return;
+    setIsLoadingSources(true);
+    setSourcesError(null);
+    try {
+      setSources(await listSources(token));
+    } catch (err: unknown) {
+      setSourcesError(err instanceof Error ? err.message : "Failed to load indexed sources");
+    } finally {
+      setIsLoadingSources(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (token && activeTab === "ingest") {
+      void fetchSources();
+    }
+  }, [token, activeTab, fetchSources]);
 
   const fetchUsers = React.useCallback(async () => {
     if (!token) return;
@@ -105,16 +133,36 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
     setIngestResult(null);
     setIngestError(null);
     try {
-      const res = await ingestDocument(
+      const accepted = await ingestDocument(
         file,
         source,
         department || undefined,
         accessLevel || undefined,
         token
       );
-      setIngestResult(`Indexed ${res.chunks_indexed} chunks for document ${res.doc_id}`);
+      // Indexing runs in the background: poll until the job lands or fails.
+      const deadline = Date.now() + 5 * 60 * 1000;
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const job = await getIngestStatus(accepted.job_id, token);
+        if (job.status === "done") {
+          const chunks = job.result?.chunks_indexed ?? 0;
+          const docId = job.result?.doc_id ?? source;
+          setIngestResult(`Indexed ${chunks} chunks for document ${docId}`);
+          break;
+        }
+        if (job.status === "failed") {
+          setIngestError(job.error || "Ingestion failed");
+          break;
+        }
+        if (Date.now() > deadline) {
+          setIngestError("Ingestion is still running — refresh the table to check.");
+          break;
+        }
+      }
       setFile(null);
       setSource("");
+      void fetchSources();
     } catch (err: unknown) {
       setIngestError(err instanceof Error ? err.message : "Ingestion failed");
     } finally {
@@ -131,10 +179,24 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
       const res = await deleteSource(deleteSourceInput, token);
       setDeleteResult(res.purged ? "Source successfully purged" : "Purge completed with warning");
       setDeleteSourceInput("");
+      void fetchSources();
     } catch (err: unknown) {
       setDeleteResult(err instanceof Error ? err.message : "Deletion failed");
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handlePurgeRow = async (doc: IndexedDocument) => {
+    if (!token || purgingSource) return;
+    setPurgingSource(doc.source);
+    try {
+      await deleteSource(doc.source, token, doc.tenant ?? undefined);
+      void fetchSources();
+    } catch (err: unknown) {
+      setSourcesError(err instanceof Error ? err.message : `Failed to purge ${doc.source}`);
+    } finally {
+      setPurgingSource(null);
     }
   };
 
@@ -316,6 +378,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
 
         {/* Ingest & Delete Tab */}
         {activeTab === "ingest" && (
+          <div className="space-y-6">
           <div className="grid md:grid-cols-2 gap-6">
             {/* Ingest Form */}
             <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
@@ -433,6 +496,89 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Indexed Documents Table */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-indigo-400" />
+                <span>Indexed Documents ({sources.length})</span>
+              </h2>
+              <button
+                type="button"
+                onClick={() => void fetchSources()}
+                disabled={isLoadingSources}
+                className="px-3 py-1.5 border border-slate-800 rounded-lg text-slate-400 hover:bg-slate-800 text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingSources ? "animate-spin" : ""}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            {sourcesError && (
+              <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-800/50 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400" />
+                <span>{sourcesError}</span>
+              </div>
+            )}
+
+            <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-slate-900 border-b border-slate-800 uppercase text-[10px] text-slate-400 font-semibold">
+                  <tr>
+                    <th className="p-3">Source</th>
+                    <th className="p-3">Department</th>
+                    <th className="p-3">Access</th>
+                    <th className="p-3">Chunks</th>
+                    <th className="p-3">Indexed</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-mono">
+                  {isLoadingSources ? (
+                    <tr>
+                      <td colSpan={6} className="p-6 text-center text-slate-500 font-sans">
+                        Loading indexed documents...
+                      </td>
+                    </tr>
+                  ) : sources.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-6 text-center text-slate-500 font-sans">
+                        No documents indexed yet. Use the form above to index one.
+                      </td>
+                    </tr>
+                  ) : (
+                    sources.map((doc) => (
+                      <tr key={`${doc.tenant ?? "default"}:${doc.source}`} className="hover:bg-slate-800/40 transition-colors">
+                        <td className="p-3 text-slate-200 font-sans font-medium break-all">{doc.source}</td>
+                        <td className="p-3 text-slate-400">{doc.department ?? "—"}</td>
+                        <td className="p-3">
+                          <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-indigo-950 text-indigo-300 border border-indigo-800/50">
+                            {doc.access_level ?? "—"}
+                          </span>
+                        </td>
+                        <td className="p-3 text-slate-400">{doc.chunks_count}</td>
+                        <td className="p-3 text-slate-400">
+                          {doc.indexed_at ? new Date(doc.indexed_at).toLocaleString() : "—"}
+                        </td>
+                        <td className="p-3 text-right font-sans">
+                          <button
+                            type="button"
+                            onClick={() => void handlePurgeRow(doc)}
+                            disabled={purgingSource !== null}
+                            className="px-2 py-1 border border-rose-800/50 rounded text-rose-300 hover:bg-rose-950/50 text-xs font-semibold transition-colors disabled:opacity-50"
+                          >
+                            {purgingSource === doc.source ? "Purging..." : "Purge"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
           </div>
         )}
       </div>

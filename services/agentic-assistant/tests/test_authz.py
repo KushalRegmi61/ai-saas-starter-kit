@@ -35,7 +35,7 @@ def _stub_index(monkeypatch):
     def fake_index(content, filename, source, department=None, access_level=None, tenant=None):
         return IngestionResult(documents_loaded=1, chunks_created=1, sources=[source])
 
-    monkeypatch.setattr(ingest_mod, "index_document", fake_index)
+    monkeypatch.setattr("service.ingest_jobs.index_document", fake_index)
 
 
 def _stub_delete(monkeypatch):
@@ -67,7 +67,7 @@ def test_admin_jwt_allows_ingest_and_delete(monkeypatch):
     _stub_index(monkeypatch)
     _stub_delete(monkeypatch)
     headers = _jwt("admin")
-    assert _post_ingest(headers).status_code == 200
+    assert _post_ingest(headers).status_code == 202
     resp = _client().delete("/sources", params={"source": "s"}, headers=headers)
     assert resp.json() == {"purged": True}
 
@@ -93,7 +93,7 @@ def test_service_token_still_works_when_jwt_configured(monkeypatch):
     _configure(monkeypatch)
     _stub_index(monkeypatch)
     resp = _post_ingest({"Authorization": f"Bearer {_SVC}"})
-    assert resp.status_code == 200
+    assert resp.status_code == 202
 
 
 def test_503_when_neither_credential_configured(monkeypatch):

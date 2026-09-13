@@ -16,6 +16,10 @@ from __future__ import annotations
 
 import logging
 
+# Optional[] (not `| None`): langgraph only recognises this spelling for
+# runtime config injection (RunnableCallable KWARGS_CONFIG_KEYS).
+from typing import Optional
+
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 
@@ -27,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 async def generate_final(
-    state: AgentState, config: RunnableConfig | None = None
+    state: AgentState, config: Optional[RunnableConfig] = None  # noqa: UP045
 ) -> dict:
     """Stream final answer from accumulated tool results.
 

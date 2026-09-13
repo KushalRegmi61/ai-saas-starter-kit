@@ -34,6 +34,12 @@ def test_index_200_true_and_posts_multipart(monkeypatch):
     assert seen["headers"] == {"Authorization": "Bearer svc-token"}
 
 
+def test_index_202_accepted(monkeypatch):
+    _configured(monkeypatch)
+    monkeypatch.setattr(ingest_client.httpx, "post", lambda *a, **kw: _Resp(202))
+    assert ingest_client.index_document_remote(b"b", "f", source="s") is True
+
+
 def test_index_non_200_false(monkeypatch):
     _configured(monkeypatch)
     monkeypatch.setattr(ingest_client.httpx, "post", lambda **kw: _Resp(422))

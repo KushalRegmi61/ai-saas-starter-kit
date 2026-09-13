@@ -14,6 +14,10 @@ from __future__ import annotations
 
 import logging
 
+# Optional[] (not `| None`): langgraph only recognises this spelling for
+# runtime config injection (RunnableCallable KWARGS_CONFIG_KEYS).
+from typing import Optional
+
 from langchain_core.runnables import RunnableConfig
 
 from agent.graph.nodes.grounding import check_grounding
@@ -24,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 async def chitchat_respond(
-    state: AgentState, config: RunnableConfig | None = None
+    state: AgentState, config: Optional[RunnableConfig] = None  # noqa: UP045
 ) -> dict:
     """Stream a direct conversational reply. No tools, no retrieval."""
     logger.info("node chitchat: start question_len=%d", len(state.get("question", "")))
