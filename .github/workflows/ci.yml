@@ -1,19 +1,76 @@
 name: CI
 
-# Runs the same quality gates AGENTS.md §5 documents. Without this, those
-# gates only ran when a human remembered to. No secrets required: backend
-# tests mock the B2 repo layer and /health tolerates a degraded connection.
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  web:
-    name: Web (lint · typecheck · build · unit)
+  detect:
+    name: Detect affected projects
     runs-on: ubuntu-latest
+    outputs:
+      python_projects: ${{ steps.output.outputs.python_projects }}
+      node_projects: ${{ steps.output.outputs.node_projects }}
+      docker_projects: ${{ steps.output.outputs.docker_projects }}
+      has_python: ${{ steps.output.outputs.has_python }}
+      has_node: ${{ steps.output.outputs.has_node }}
+      has_docker: ${{ steps.output.outputs.has_docker }}
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: '0.10.7'
+
+      - name: Detect affected projects
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python scripts/ci/detect_affected.py \
+            --base "$BASE_SHA" \
+            --head "$HEAD_SHA" > "$RUNNER_TEMP/affected.json"
+          cat "$RUNNER_TEMP/affected.json"
+
+      - name: Export matrix outputs
+        id: output
+        run: |
+          affected="$RUNNER_TEMP/affected.json"
+          echo "python_projects=$(jq -c '.python_projects' "$affected")" >> "$GITHUB_OUTPUT"
+          echo "node_projects=$(jq -c '.node_projects' "$affected")" >> "$GITHUB_OUTPUT"
+          echo "docker_projects=$(jq -c '.docker_projects' "$affected")" >> "$GITHUB_OUTPUT"
+          echo "has_python=$(jq -r '.has_python' "$affected")" >> "$GITHUB_OUTPUT"
+          echo "has_node=$(jq -r '.has_node' "$affected")" >> "$GITHUB_OUTPUT"
+          echo "has_docker=$(jq -r '.has_docker' "$affected")" >> "$GITHUB_OUTPUT"
+
+  node-checks:
+    name: Node checks (${{ matrix.project.path }})
+    needs: detect
+    if: needs.detect.outputs.has_node == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJSON(needs.detect.outputs.node_projects) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -22,76 +79,86 @@ jobs:
         with:
           version: 11
 
-      - name: Install Node
+      - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Install project dependencies
+        run: pnpm install --frozen-lockfile --filter "${{ matrix.project.package_name }}"
 
-      - name: Lint
-        run: pnpm lint
-
-      - name: Unit tests
-        run: pnpm test:web
-
-      - name: Typecheck + build
-        run: pnpm build
-        # next build prerenders the /signin and /signup pages, which construct a
-        # Supabase browser client. These NEXT_PUBLIC_* values are public by design
-        # (the anon key is publishable) and are only placeholders to let the build
-        # succeed as a gate — real values are injected at deploy time.
+      - name: Run project checks
+        run: ${{ matrix.project.run }}
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
 
-  api:
-    name: API (ruff · pytest · structure)
+  python-checks:
+    name: Python checks (${{ matrix.project.path }})
+    needs: detect
+    if: needs.detect.outputs.has_python == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJSON(needs.detect.outputs.python_projects) }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
-      - name: Install uv
+      - name: Set up uv
         uses: astral-sh/setup-uv@v5
+        with:
+          version: '0.10.7'
 
-      - name: Sync workspace
-        run: uv sync --frozen --all-packages --all-groups
+      - name: Sync project environment
+        run: uv sync --frozen --package "${{ matrix.project.package_name }}" --all-groups
 
-      - name: Lint (ruff)
-        run: .venv/bin/ruff check services/api libs/rag libs/auth services/shared services/worker services/agentic-assistant
+      - name: Run project checks
+        run: ${{ matrix.project.run }}
 
-      - name: Tests (pytest)
-        run: cd services/api && ../../.venv/bin/python -m pytest
-
-      - name: Structure boundary tests
-        run: cd services/api && ../../.venv/bin/python -m pytest tests/test_structure.py -v
-
-  agent:
-    name: Agent (ruff · pytest)
+  docker-publish:
+    name: Publish agent Docker image
+    needs: [detect, python-checks]
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.detect.outputs.has_docker == 'true' &&
+      needs.python-checks.result == 'success'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Python
-        uses: actions/setup-python@v5
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
         with:
-          python-version: "3.11"
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ vars.DOCKERHUB_TOKEN }}
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - name: Generate Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: kushalregmi61/agentic_assistant
+          tags: |
+            type=sha,format=long,prefix=sha-
+            type=raw,value=latest
 
-      - name: Sync workspace
-        run: uv sync --frozen --all-packages --all-groups
-
-      - name: Lint (ruff)
-        run: .venv/bin/ruff check services/agentic-assistant
-
-      - name: Tests (pytest)
-        run: cd services/agentic-assistant && ../../.venv/bin/python -m pytest
+      - name: Build and push agent image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/agentic-assistant/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

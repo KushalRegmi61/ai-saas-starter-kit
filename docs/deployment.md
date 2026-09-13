@@ -107,6 +107,27 @@ platform's `$PORT`.
 > 2. `BILLING_*_URL` default to `localhost:3000` — Stripe Checkout will redirect
 >    users back to localhost after payment until you point these at your frontend.
 
+### Agentic-assistant container
+
+The agentic assistant has a root-context Dockerfile because its runtime package
+depends on the workspace packages `ai-saas-rag`, `ai-saas-auth`, and
+`ai-saas-shared`. Build it from the repository root so `uv` can resolve the
+committed workspace lockfile:
+
+```bash
+docker build -f services/agentic-assistant/Dockerfile -t ai-saas-agent .
+docker run --env-file services/agentic-assistant/.env -p 8001:8001 ai-saas-agent
+```
+
+The image installs the production dependency graph with
+`uv sync --frozen --no-dev --package ai-saas-agentic-assistant`; it does not
+copy secrets into the image. Set `PORT` in the hosting platform (the local
+default is `8001`) and provide the runtime settings through environment
+variables, especially `OPENAI_API_KEY`, `AGENTIC_ASSISTANT_DATABASE_URL`,
+`AGENTIC_ASSISTANT_SERVICE_TOKEN`, `AGENTIC_ASSISTANT_JWT_SECRET`, and
+`AGENTIC_ASSISTANT_CORS_ORIGINS`. `QDRANT_URL`, `QDRANT_API_KEY`, and the
+Langfuse variables are needed when those integrations are enabled.
+
 ## 3. Supabase (hosted)
 
 1. Create a project at [supabase.com](https://supabase.com).

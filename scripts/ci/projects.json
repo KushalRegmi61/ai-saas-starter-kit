@@ -1,0 +1,67 @@
+{
+  "apps/web": {
+    "ecosystem": "node",
+    "package_name": "@ai-saas-starter-kit/web",
+    "tasks": ["pnpm lint", "pnpm test:web", "pnpm build", "pnpm typecheck"]
+  },
+  "apps/agentic-assistant-web": {
+    "ecosystem": "node",
+    "package_name": "@ai-saas-starter-kit/agentic-assistant-web",
+    "tasks": ["pnpm lint:assistant-web", "pnpm build:assistant-web", "pnpm typecheck:assistant-web"]
+  },
+  "packages/shared": {
+    "ecosystem": "node",
+    "package_name": "@ai-saas-starter-kit/shared",
+    "tasks": []
+  },
+  "services/api": {
+    "ecosystem": "python",
+    "package_name": "ai-saas-api",
+    "tasks": [
+      ".venv/bin/ruff check services/api",
+      "cd services/api && ../../.venv/bin/python -m pytest",
+      "cd services/api && ../../.venv/bin/python -m pytest tests/test_structure.py -v"
+    ]
+  },
+  "services/worker": {
+    "ecosystem": "python",
+    "package_name": "ai-saas-worker",
+    "tasks": [
+      ".venv/bin/ruff check services/worker",
+      "cd services/worker && ../../.venv/bin/python -m pytest"
+    ]
+  },
+  "services/agentic-assistant": {
+    "ecosystem": "python",
+    "package_name": "ai-saas-agentic-assistant",
+    "tasks": [
+      ".venv/bin/ruff check services/agentic-assistant",
+      "cd services/agentic-assistant && ../../.venv/bin/python -m pytest"
+    ],
+    "docker": true
+  },
+  "services/shared": {
+    "ecosystem": "python",
+    "package_name": "ai-saas-shared",
+    "tasks": [
+      ".venv/bin/ruff check services/shared",
+      "cd services/shared && ../../.venv/bin/python -m pytest"
+    ]
+  },
+  "libs/auth": {
+    "ecosystem": "python",
+    "package_name": "ai-saas-auth",
+    "tasks": [
+      ".venv/bin/ruff check libs/auth",
+      "cd libs/auth && ../../.venv/bin/python -m pytest"
+    ]
+  },
+  "libs/rag": {
+    "ecosystem": "python",
+    "package_name": "ai-saas-rag",
+    "tasks": [
+      ".venv/bin/ruff check libs/rag",
+      "cd libs/rag && ../../.venv/bin/python -m pytest"
+    ]
+  }
+}

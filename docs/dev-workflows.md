@@ -1,4 +1,4 @@
-<!-- last_verified: 2026-07-15 -->
+<!-- last_verified: 2026-09-13 -->
 # Dev Workflows
 
 Engineering workflows for this repo.
@@ -68,7 +68,13 @@ Engineering workflows for this repo.
 - Before PR: run full suite
 
 ### Continuous Integration
-- `.github/workflows/ci.yml` runs the web gates (`lint`, `test:web`, `build`) and API gates (`ruff`, `pytest`, structure tests) on every PR and push to `main`.
+- `.github/workflows/ci.yml` runs only affected project checks. The detector reads
+  uv workspace members and Python manifests plus pnpm workspace manifests, then
+  expands changed projects to their transitive consumers for regression testing.
+- Unknown project mappings and ecosystem lockfile changes conservatively expand
+  to all relevant checks. Documentation-only changes run no project checks.
+- Agent Docker publishing is restricted to successful agent-impacting pushes on
+  `main`; pull requests never publish images.
 - No secrets required — backend tests mock the B2 repo layer and `/health` tolerates a degraded connection. E2E is not in CI (it needs a running app + live B2).
 
 ## Frontend Conventions
