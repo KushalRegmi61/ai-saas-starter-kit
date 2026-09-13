@@ -15,9 +15,11 @@ from agent.config import get_agent_settings
 from agent.logging_config import configure_logging
 from api import auth, chat, health, ingest, project_tokens, projects
 from models.conversations import ensure_conversation_tables_async
+from models.project_state import ensure_project_state_tables_async
 from models.project_tokens import ensure_project_token_tables_async
 from models.projects import ensure_project_tables_async
 from models.users import ensure_and_seed_async, get_async_pool
+from project_mcp.server import create_mcp_app, mount_mcp_app
 
 logger = configure_logging()
 
@@ -48,6 +50,7 @@ async def lifespan(app: FastAPI):
                 await ensure_conversation_tables_async(connection)
                 await ensure_project_tables_async(connection)
                 await ensure_project_token_tables_async(connection)
+                await ensure_project_state_tables_async(connection)
                 await connection.commit()
                 logger.info("lifespan: tables ready")
             if settings.agentic_assistant_admin_email:
@@ -63,7 +66,8 @@ async def lifespan(app: FastAPI):
                 )
             app.state.assistant_user_pool = pool
             logger.info("lifespan: pool ready, serving")
-            yield
+            async with mcp_app.router.lifespan_context(mcp_app):
+                yield
         finally:
             await neon_repo.close_async_pool()
             logger.info("lifespan: closing pool")
@@ -73,7 +77,8 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("lifespan: no database URL, running without auth store")
         app.state.assistant_user_pool = None
-        yield
+        async with mcp_app.router.lifespan_context(mcp_app):
+            yield
     logger.info("agentic-assistant stopping: lifespan exit")
 
 
@@ -93,9 +98,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+def _assistant_pool():
+    return getattr(app.state, "assistant_user_pool", None)
+
+
 app.include_router(health.router, tags=["health"])
 app.include_router(ingest.router, tags=["ingest"])
 app.include_router(auth.router, tags=["auth"])
 app.include_router(projects.router, tags=["projects"])
 app.include_router(project_tokens.router, tags=["project-tokens"])
 app.include_router(chat.router, tags=["chat"])
+mcp_app = create_mcp_app(_assistant_pool)
+app.mount("/mcp", mount_mcp_app(mcp_app))

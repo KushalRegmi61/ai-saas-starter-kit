@@ -5,12 +5,19 @@ from __future__ import annotations
 from datetime import datetime
 
 from auth.types import AssistantClaims
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel, Field
 
 from agent.authz import require_jwt_user
 from api.auth import get_user_pool
+from models.project_audit import ProjectAuditEvent
+from models.project_state import (
+    DailyProjectUpdate,
+    FeatureStatusHistory,
+    ProjectContext,
+    ProjectFeature,
+)
 from models.projects import (
     InvalidLeadAssignment,
     LeadNotFound,
@@ -19,7 +26,7 @@ from models.projects import (
     ProjectNotFound,
     ProjectStatus,
 )
-from service import projects
+from service import project_state, projects
 
 router = APIRouter(prefix="/projects")
 
@@ -30,6 +37,7 @@ class ProjectResponse(BaseModel):
     description: str | None
     lead_id: str | None
     status: ProjectStatus
+    completion_percentage: int
     created_at: datetime | None
     updated_at: datetime | None
 
@@ -65,6 +73,10 @@ def _error(exc: Exception) -> HTTPException:
     if isinstance(exc, projects.ProjectForbidden):
         return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Project access denied")
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid project request")
+
+
+def _state_error(exc: Exception) -> HTTPException:
+    return _error(exc)
 
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
@@ -105,6 +117,79 @@ async def get_project(
     except (ProjectError, projects.ProjectForbidden, ValueError) as exc:
         raise _error(exc) from None
     return ProjectResponse.from_project(project)
+
+
+@router.get("/{project_id}/context", response_model=ProjectContext)
+async def get_project_context(
+    project_id: str,
+    pool: AsyncConnectionPool = Depends(get_user_pool),
+    claims: AssistantClaims = Depends(require_jwt_user),
+) -> ProjectContext:
+    try:
+        return await project_state.get_project_context_for_actor(
+            pool, claims=claims, project_id=project_id
+        )
+    except (ProjectError, projects.ProjectForbidden, ValueError) as exc:
+        raise _state_error(exc) from None
+
+
+@router.get("/{project_id}/features", response_model=list[ProjectFeature])
+async def get_project_features(
+    project_id: str,
+    pool: AsyncConnectionPool = Depends(get_user_pool),
+    claims: AssistantClaims = Depends(require_jwt_user),
+) -> list[ProjectFeature]:
+    try:
+        return await project_state.list_features_for_actor(
+            pool, claims=claims, project_id=project_id
+        )
+    except (ProjectError, projects.ProjectForbidden, ValueError) as exc:
+        raise _state_error(exc) from None
+
+
+@router.get("/{project_id}/updates", response_model=list[DailyProjectUpdate])
+async def get_project_updates(
+    project_id: str,
+    limit: int = Query(default=50, ge=1, le=100),
+    pool: AsyncConnectionPool = Depends(get_user_pool),
+    claims: AssistantClaims = Depends(require_jwt_user),
+) -> list[DailyProjectUpdate]:
+    try:
+        return await project_state.list_updates_for_actor(
+            pool, claims=claims, project_id=project_id, limit=limit
+        )
+    except (ProjectError, projects.ProjectForbidden, ValueError) as exc:
+        raise _state_error(exc) from None
+
+
+@router.get("/{project_id}/history", response_model=list[FeatureStatusHistory])
+async def get_project_history(
+    project_id: str,
+    limit: int = Query(default=100, ge=1, le=200),
+    pool: AsyncConnectionPool = Depends(get_user_pool),
+    claims: AssistantClaims = Depends(require_jwt_user),
+) -> list[FeatureStatusHistory]:
+    try:
+        return await project_state.list_history_for_actor(
+            pool, claims=claims, project_id=project_id, limit=limit
+        )
+    except (ProjectError, projects.ProjectForbidden, ValueError) as exc:
+        raise _state_error(exc) from None
+
+
+@router.get("/{project_id}/audit", response_model=list[ProjectAuditEvent])
+async def get_project_audit(
+    project_id: str,
+    limit: int = Query(default=100, ge=1, le=200),
+    pool: AsyncConnectionPool = Depends(get_user_pool),
+    claims: AssistantClaims = Depends(require_jwt_user),
+) -> list[ProjectAuditEvent]:
+    try:
+        return await project_state.list_audit_for_actor(
+            pool, claims=claims, project_id=project_id, limit=limit
+        )
+    except (ProjectError, projects.ProjectForbidden, ValueError) as exc:
+        raise _state_error(exc) from None
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse)

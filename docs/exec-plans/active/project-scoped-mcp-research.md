@@ -702,11 +702,26 @@ validated and audited server-side.
 ## Status
 
 Phase 0 and Phase 1 implementation are present in the current worktree.
-Phase 2 now adds project-scoped coding-agent credentials inside the existing
+Phase 2 adds project-scoped coding-agent credentials inside the existing
 `services/agentic-assistant` deployment: hash-at-rest 30-day tokens, labelled
 metadata, lead/admin platform APIs, one-time secret responses, ownership
-invalidation, and project-dashboard controls. No separate MCP service, `/mcp`
-route, MCP SDK, or MCP tools are implemented yet; those remain Phase 3.
+invalidation, and project-dashboard controls.
+
+Phase 3 adds the in-process Streamable HTTP MCP server at `/mcp`. The server
+revalidates the Phase 2 bearer token on every HTTP request, binds a
+request-scoped `ProjectMcpContext`, and exposes exactly five tools:
+`get_project_context`, `get_project_features`, `get_previous_update`,
+`update_feature_status`, and `submit_daily_update`. Project features,
+blockers, daily updates, and feature history are persisted in normalized
+Postgres tables. Write tools require explicit lead confirmation in the coding
+agent conversation and remain validated and audited server-side.
+
+Manager-agent project tools and a separately deployed MCP service remain
+deferred. Phase 4 adds the assistant-web project dashboard and typed,
+role-authorized project-state reads for context, features, updates, history,
+and audit events. The POC does not accept a
+model-supplied `project_id`, expose generic SQL, or share project context
+through module-global state.
 
 The new token unit tests, project persistence/service tests, Ruff checks, and
 assistant-web lint/typecheck pass. The repository's HTTP/TestClient lifespan

@@ -99,7 +99,20 @@ service-integration settings. Tests:
 `services/agentic-assistant/tests/test_authz.py` (dual-auth matrix, ceilings,
 fail-closed cases) and `test_auth_api.py` (login/admin route contracts).
 
-Deferred: API forwarding of the caller's JWT, manager dashboard,
-per-project scoping, frontend token storage, password reset/change, and login
-rate limiting. See
+## Project dashboard
+
+The standalone `apps/agentic-assistant-web` uses the assistant JWT to access
+role-scoped project views. Admins and managers can inspect all projects; leads
+see only projects assigned to them. Project detail reads are exposed through
+`/projects/{id}/context`, `/features`, `/updates`, `/history`, and `/audit`.
+Each endpoint performs server-side project authorization and applies bounded,
+project-filtered queries.
+
+The project dashboard displays completion, feature status, blockers, daily
+updates, feature history, and project audit events. Lead and admin users can
+manage labelled, one-time MCP credentials through the existing token routes;
+raw credentials are never returned by list or audit endpoints.
+
+Deferred: API forwarding of the caller's JWT, password reset/change, and
+login rate limiting. See
 `docs/superpowers/specs/2026-09-12-assistant-auth-lib-design.md`.

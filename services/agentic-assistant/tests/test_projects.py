@@ -87,7 +87,7 @@ async def test_schema_initialization_is_idempotent_shape():
     connection = FakeConnection()
     await ensure_project_tables_async(connection)
     await ensure_project_tables_async(connection)
-    assert len(connection.calls) == 4
+    assert len(connection.calls) == 8
     assert "assistant_projects" in connection.calls[0][0]
     assert "ON_TRACK" in connection.calls[0][0]
     assert "ON DELETE RESTRICT" in connection.calls[0][0]

@@ -25,6 +25,7 @@ class Project(BaseModel):
     description: str | None = None
     lead_id: str | None = None
     status: ProjectStatus = ProjectStatus.ON_TRACK
+    completion_percentage: int = Field(default=0, ge=0, le=100)
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -55,7 +56,9 @@ class AssignmentConflict(ProjectError):
     """Raised when assignment would silently replace another lead."""
 
 
-_PROJECT_COLUMNS = "id, name, description, lead_id, status, created_at, updated_at"
+_PROJECT_COLUMNS = (
+    "id, name, description, lead_id, status, created_at, updated_at, completion_percentage"
+)
 _UNSET = object()
 
 
@@ -68,6 +71,7 @@ def _project_from_row(row: tuple[Any, ...]) -> Project:
         status=ProjectStatus(row[4]),
         created_at=row[5],
         updated_at=row[6],
+        completion_percentage=row[7] if len(row) > 7 and row[7] is not None else 0,
     )
 
 
@@ -98,15 +102,28 @@ async def ensure_project_tables_async(connection: Any) -> None:
             status TEXT NOT NULL DEFAULT 'ON_TRACK'
                 CHECK (status IN ('ON_TRACK', 'AT_RISK', 'BLOCKED', 'COMPLETED')),
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            completion_percentage INTEGER NOT NULL DEFAULT 0
+                CHECK (completion_percentage BETWEEN 0 AND 100)
         )
         """
     )
     await connection.execute(
+        "ALTER TABLE assistant_projects ADD COLUMN IF NOT EXISTS "
+        "completion_percentage INTEGER NOT NULL DEFAULT 0"
+    )
+    await connection.execute(
         """
-        CREATE INDEX IF NOT EXISTS assistant_projects_lead_idx
-        ON assistant_projects (lead_id)
+        DO $$ BEGIN
+            ALTER TABLE assistant_projects
+            ADD CONSTRAINT assistant_projects_completion_percentage_check
+            CHECK (completion_percentage BETWEEN 0 AND 100);
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$
         """
+    )
+    await connection.execute(
+        "CREATE INDEX IF NOT EXISTS assistant_projects_lead_idx ON assistant_projects (lead_id)"
     )
 
 

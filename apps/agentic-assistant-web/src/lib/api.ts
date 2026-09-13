@@ -2,6 +2,11 @@ import type {
   AssistantUser,
   AssistantProject,
   AssistantProjectToken,
+  ProjectAuditEvent,
+  ProjectContext,
+  ProjectFeature,
+  DailyProjectUpdate,
+  FeatureStatusHistory,
   CreateUserPayload,
   CreateProjectPayload,
   CreateProjectTokenPayload,
@@ -122,6 +127,26 @@ export async function listProjects(token: string): Promise<AssistantProject[]> {
 
 export async function getProject(projectId: string, token: string): Promise<AssistantProject> {
   return fetchAssistant<AssistantProject>(`/projects/${projectId}`, { method: "GET" }, token);
+}
+
+export async function getProjectContext(projectId: string, token: string): Promise<ProjectContext> {
+  return fetchAssistant<ProjectContext>(`/projects/${projectId}/context`, { method: "GET" }, token);
+}
+
+export async function listProjectFeatures(projectId: string, token: string): Promise<ProjectFeature[]> {
+  return fetchAssistant<ProjectFeature[]>(`/projects/${projectId}/features`, { method: "GET" }, token);
+}
+
+export async function listProjectUpdates(projectId: string, token: string): Promise<DailyProjectUpdate[]> {
+  return fetchAssistant<DailyProjectUpdate[]>(`/projects/${projectId}/updates?limit=50`, { method: "GET" }, token);
+}
+
+export async function listProjectHistory(projectId: string, token: string): Promise<FeatureStatusHistory[]> {
+  return fetchAssistant<FeatureStatusHistory[]>(`/projects/${projectId}/history?limit=100`, { method: "GET" }, token);
+}
+
+export async function listProjectAudit(projectId: string, token: string): Promise<ProjectAuditEvent[]> {
+  return fetchAssistant<ProjectAuditEvent[]>(`/projects/${projectId}/audit?limit=100`, { method: "GET" }, token);
 }
 
 export async function createProject(

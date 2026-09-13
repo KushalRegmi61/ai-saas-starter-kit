@@ -15,6 +15,7 @@ import type {
   ProjectStatus,
 } from "../../types";
 import { ProjectTokenPanel } from "./project-token-panel";
+import { ProjectStatePanel } from "./project-state-panel";
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   ON_TRACK: "On track",
@@ -157,14 +158,15 @@ export function ProjectsDashboard({ token, role }: ProjectsDashboardProps) {
         ) : (
           <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
             <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
-              <div className="grid grid-cols-[1fr_120px_100px] border-b border-slate-800 px-4 py-3 text-[10px] uppercase tracking-wide text-slate-500">
-                <span>Project</span><span>Status</span><span>Lead</span>
+              <div className="grid grid-cols-[1fr_100px_70px_110px] border-b border-slate-800 px-4 py-3 text-[10px] uppercase tracking-wide text-slate-500">
+                <span>Project</span><span>Status</span><span>Done</span><span>Updated</span>
               </div>
               {projects.map((project) => (
-                <button key={project.id} type="button" onClick={() => setSelected(project)} className={`grid w-full grid-cols-[1fr_120px_100px] border-b border-slate-800 px-4 py-4 text-left text-xs hover:bg-slate-800/70 ${selected?.id === project.id ? "bg-slate-800" : ""}`}>
+                <button key={project.id} type="button" onClick={() => setSelected(project)} className={`grid w-full grid-cols-[1fr_100px_70px_110px] border-b border-slate-800 px-4 py-4 text-left text-xs hover:bg-slate-800/70 ${selected?.id === project.id ? "bg-slate-800" : ""}`}>
                   <span className="font-semibold text-slate-100">{project.name}</span>
                   <span className="text-slate-300">{STATUS_LABELS[project.status]}</span>
-                  <span className="truncate text-slate-400">{project.lead_id ? leadById.get(project.lead_id)?.email ?? "Assigned" : "Unassigned"}</span>
+                  <span className="text-slate-300">{project.completion_percentage}%</span>
+                  <span className="truncate text-slate-400">{project.updated_at ? new Date(project.updated_at).toLocaleDateString() : "—"}</span>
                 </button>
               ))}
             </div>
@@ -188,6 +190,7 @@ export function ProjectsDashboard({ token, role }: ProjectsDashboardProps) {
                 {canEdit && <button disabled={saving} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold disabled:opacity-50">Save changes</button>}
               </form>
               <ProjectTokenPanel projectId={selected.id} role={role} token={token} />
+              <ProjectStatePanel projectId={selected.id} token={token} />
               </div>
             )}
           </div>

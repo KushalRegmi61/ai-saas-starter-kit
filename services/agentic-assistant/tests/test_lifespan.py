@@ -53,6 +53,7 @@ def test_configured_pool_is_seeded_and_closed(monkeypatch):
     monkeypatch.setattr(main, "ensure_conversation_tables_async", ensure_tables)
     monkeypatch.setattr(main, "ensure_project_tables_async", ensure_tables)
     monkeypatch.setattr(main, "ensure_project_token_tables_async", ensure_tables)
+    monkeypatch.setattr(main, "ensure_project_state_tables_async", ensure_tables)
 
     with TestClient(app):
         assert app.state.assistant_user_pool is pool
@@ -101,6 +102,32 @@ def test_project_table_failure_fails_startup(monkeypatch):
     monkeypatch.setattr(main, "ensure_conversation_tables_async", conversation_noop)
     monkeypatch.setattr(main, "ensure_project_tables_async", fail_project_tables)
     monkeypatch.setattr(main, "ensure_project_token_tables_async", conversation_noop)
+    monkeypatch.setattr(main, "ensure_project_state_tables_async", conversation_noop)
 
     with pytest.raises(RuntimeError, match="project schema unavailable"), TestClient(app):
+        pass
+
+
+def test_project_state_table_failure_fails_startup(monkeypatch):
+    settings = get_agent_settings()
+    monkeypatch.setattr(settings, "agentic_assistant_database_url", "postgresql://db")
+    pool = FakePool()
+
+    async def get_pool(url):
+        return pool
+
+    async def fail_project_state(connection):
+        raise RuntimeError("project state schema unavailable")
+
+    async def noop(*args):
+        return None
+
+    monkeypatch.setattr(main, "get_async_pool", get_pool)
+    monkeypatch.setattr(main, "ensure_and_seed_async", noop)
+    monkeypatch.setattr(main, "ensure_conversation_tables_async", noop)
+    monkeypatch.setattr(main, "ensure_project_tables_async", noop)
+    monkeypatch.setattr(main, "ensure_project_token_tables_async", noop)
+    monkeypatch.setattr(main, "ensure_project_state_tables_async", fail_project_state)
+
+    with pytest.raises(RuntimeError, match="project state schema unavailable"), TestClient(app):
         pass
