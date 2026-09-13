@@ -34,13 +34,36 @@ from psycopg_pool import ConnectionPool
 logger = logging.getLogger(__name__)
 
 
+# Managed Postgres (Neon/Supabase) closes idle SSL connections after a few
+# minutes. Recycle pooled connections well before that, validate checkouts,
+# and enable TCP keepalives so a stale socket is detected instead of handed
+# to the next request.
+_POOL_KWARGS = {
+    "keepalives": 1,
+    "keepalives_idle": 30,
+    "keepalives_interval": 10,
+    "keepalives_count": 5,
+    "connect_timeout": 10,
+}
+
+
 def get_pool(database_url: str) -> ConnectionPool:
     """Open and synchronously validate the process-wide assistant pool."""
     if not database_url:
         logger.warning("models: pool open rejected, database URL missing")
         raise ValueError("AGENTIC_ASSISTANT_DATABASE_URL is missing")
     logger.info("models: opening assistant pool")
-    pool = ConnectionPool(conninfo=database_url, min_size=1, max_size=10, open=True)
+    pool = ConnectionPool(
+        conninfo=database_url,
+        min_size=1,
+        max_size=10,
+        open=True,
+        check=ConnectionPool.check_connection,
+        max_lifetime=300,
+        max_idle=60,
+        timeout=10,
+        kwargs=_POOL_KWARGS,
+    )
     try:
         pool.wait()
     except Exception:
@@ -57,7 +80,17 @@ async def get_async_pool(database_url: str):
 
     if not database_url:
         raise ValueError("AGENTIC_ASSISTANT_DATABASE_URL is missing")
-    pool = AsyncConnectionPool(conninfo=database_url, min_size=1, max_size=10, open=False)
+    pool = AsyncConnectionPool(
+        conninfo=database_url,
+        min_size=1,
+        max_size=10,
+        open=False,
+        check=AsyncConnectionPool.check_connection,
+        max_lifetime=300,
+        max_idle=60,
+        timeout=10,
+        kwargs=dict(_POOL_KWARGS),
+    )
     await pool.open(wait=True)
     return pool
 
@@ -210,7 +243,9 @@ def set_role(
     return updated
 
 
-async def ensure_and_seed_async(connection: Any, admin_email: str, admin_password: str) -> dict | None:
+async def ensure_and_seed_async(
+    connection: Any, admin_email: str, admin_password: str
+) -> dict | None:
     await ensure_assistant_tables_async(connection)
     if not admin_email and not admin_password:
         return None
@@ -223,7 +258,9 @@ async def ensure_and_seed_async(connection: Any, admin_email: str, admin_passwor
     if existing is not None:
         return existing
     password_hash = await asyncio.to_thread(hash_password, admin_password)
-    user = await insert_user_async(connection, email=email, password_hash=password_hash, role="admin")
+    user = await insert_user_async(
+        connection, email=email, password_hash=password_hash, role="admin"
+    )
     await record_audit_event_async(
         connection,
         actor_id=None,
@@ -264,7 +301,9 @@ async def authenticate_async(connection: Any, email: str, password: str) -> dict
     return {key: value for key, value in user.items() if key != "password_hash"}
 
 
-async def create_user_async(connection: Any, *, email: str, password: str, role: str, actor_id: str):
+async def create_user_async(
+    connection: Any, *, email: str, password: str, role: str, actor_id: str
+):
     _require_role(role)
     password_hash = await asyncio.to_thread(hash_password, password)
     user = await insert_user_async(
@@ -286,9 +325,7 @@ async def list_users_async(connection: Any) -> list[dict]:
     return await store_list_users_async(connection, limit=200)
 
 
-async def set_role_async(
-    connection: Any, *, user_id: str, role: str, actor_id: str
-) -> dict | None:
+async def set_role_async(connection: Any, *, user_id: str, role: str, actor_id: str) -> dict | None:
     _require_role(role)
     existing = await find_user_by_id_async(connection, user_id)
     if existing is None:

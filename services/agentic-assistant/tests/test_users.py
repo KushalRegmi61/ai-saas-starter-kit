@@ -77,3 +77,27 @@ def test_authenticate_records_success_and_hides_hash(monkeypatch):
     assert result == {"id": "u-1", "email": "root@example.com", "role": "admin"}
     assert "password_hash" not in result
     assert events[0]["action"] == "login.success"
+
+
+@pytest.mark.asyncio
+async def test_async_pool_recycles_stale_connections(monkeypatch):
+    import models.users as users_module
+
+    seen = {}
+
+    class FakePool:
+        check_connection = staticmethod(lambda conn: None)
+
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+
+        async def open(self, wait=True):
+            seen["opened"] = wait
+
+    monkeypatch.setattr("psycopg_pool.AsyncConnectionPool", FakePool)
+    await users_module.get_async_pool("postgresql://db")
+
+    assert seen["max_lifetime"] <= 300
+    assert seen["max_idle"] <= 60
+    assert seen["check"] is not None
+    assert seen["kwargs"]["keepalives"] == 1

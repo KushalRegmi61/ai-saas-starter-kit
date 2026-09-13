@@ -9,6 +9,15 @@
         "/home/pursottam/mine/projects/ai-saas-starter-kit"
       ],
       "enabled": true
+    },
+    "project-status": {
+      "type": "remote",
+      "url": "http://localhost:8000/mcp",
+      "oauth": false,
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer {env:PROJECT_MCP_TOKEN}"
+      }
     }
   },
   "instructions": ["AGENTS.md"]

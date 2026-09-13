@@ -11,6 +11,7 @@ from typing import Any
 
 from auth.store import record_audit_event_async
 from auth.types import AssistantClaims
+from psycopg import OperationalError
 
 from models import project_tokens, projects
 
@@ -18,6 +19,10 @@ logger = logging.getLogger(__name__)
 
 TOKEN_LIFETIME = timedelta(days=30)
 TOKEN_PREFIX = "prj_"
+# Managed Postgres may hand the pool a socket the server already closed. The
+# pool discards it, so one immediate retry on a fresh connection recovers the
+# first request after an idle stretch instead of surfacing a 500.
+_AUTH_DB_ATTEMPTS = 2
 
 
 class ProjectTokenForbidden(PermissionError):
@@ -132,22 +137,40 @@ async def authenticate_project_token(
 ) -> project_tokens.ProjectMcpContext:
     if not raw_token.startswith(TOKEN_PREFIX):
         raise ProjectTokenExpired("Invalid project credential")
-    async with pool.connection() as connection, connection.transaction():
-        result = await project_tokens.find_active_project_token_async(
-            connection, token_hash=_hash_token(raw_token)
-        )
-        if result is None:
-            logger.warning("project token authentication failed")
-            raise ProjectTokenExpired("Invalid, expired, or revoked project credential")
-        token, project_name, lead_id = result
-        if not lead_id or token.created_by != lead_id:
-            logger.warning("project token ownership check failed token_id=%s", token.id)
-            raise ProjectTokenExpired("Project credential is no longer assigned")
-        await project_tokens.touch_project_token_last_used_async(connection, token_id=token.id)
-        return project_tokens.ProjectMcpContext(
-            token_id=token.id,
-            project_id=token.project_id,
-            project_name=project_name,
-            lead_id=lead_id,
-            token_label=token.label,
-        )
+    last_error: Exception | None = None
+    for _ in range(_AUTH_DB_ATTEMPTS):
+        try:
+            async with pool.connection() as connection, connection.transaction():
+                return await _authenticate_once(connection, raw_token=raw_token)
+        except ProjectTokenExpired:
+            raise
+        except OperationalError as exc:
+            last_error = exc
+            logger.warning("project token auth hit stale db connection, retrying")
+    logger.exception("project token authentication db failure")
+    raise (
+        last_error if last_error is not None else ProjectTokenExpired("Invalid project credential")
+    )
+
+
+async def _authenticate_once(
+    connection: Any, *, raw_token: str
+) -> project_tokens.ProjectMcpContext:
+    result = await project_tokens.find_active_project_token_async(
+        connection, token_hash=_hash_token(raw_token)
+    )
+    if result is None:
+        logger.warning("project token authentication failed")
+        raise ProjectTokenExpired("Invalid, expired, or revoked project credential")
+    token, project_name, lead_id = result
+    if not lead_id or token.created_by != lead_id:
+        logger.warning("project token ownership check failed token_id=%s", token.id)
+        raise ProjectTokenExpired("Project credential is no longer assigned")
+    await project_tokens.touch_project_token_last_used_async(connection, token_id=token.id)
+    return project_tokens.ProjectMcpContext(
+        token_id=token.id,
+        project_id=token.project_id,
+        project_name=project_name,
+        lead_id=lead_id,
+        token_label=token.label,
+    )

@@ -7,6 +7,9 @@ import logging
 from typing import Any
 
 from auth.store import record_audit_event_async
+from psycopg import OperationalError
+from psycopg_pool import PoolTimeout
+from starlette.requests import ClientDisconnect
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from project_mcp.context import project_context_var
@@ -70,9 +73,15 @@ class ProjectTokenAuthMiddleware:
             await _audit_failure(pool, "invalid_or_inactive_token")
             await self._reject(send, "Invalid or inactive project credential")
             return
+        except (OperationalError, PoolTimeout):
+            logger.exception("mcp authentication store unavailable")
+            await self._reject(send, "Authentication store unavailable", status_code=503)
+            return
         token_handle = project_context_var.set(context)
         try:
             await self.app(scope, receive, send)
+        except ClientDisconnect:
+            logger.info("mcp client disconnected mid-request")
         finally:
             project_context_var.reset(token_handle)
 

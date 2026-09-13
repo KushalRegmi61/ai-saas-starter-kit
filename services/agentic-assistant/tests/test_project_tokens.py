@@ -145,3 +145,49 @@ def test_token_generation_is_hashed_and_expiring(monkeypatch):
     assert len(hashed) == 64
     assert hashed != raw
     assert timedelta(days=30) == token_service.TOKEN_LIFETIME
+
+
+@pytest.mark.asyncio
+async def test_authenticate_retries_stale_connection_then_succeeds(monkeypatch):
+    from types import SimpleNamespace
+
+    from psycopg import OperationalError
+
+    token = SimpleNamespace(id="t-1", project_id="p-1", created_by="lead-1", label="laptop")
+
+    async def find_active(connection, token_hash):
+        return (token, "Payments", "lead-1")
+
+    async def touch(connection, token_id):
+        return None
+
+    monkeypatch.setattr("models.project_tokens.find_active_project_token_async", find_active)
+    monkeypatch.setattr("models.project_tokens.touch_project_token_last_used_async", touch)
+
+    attempts = {"count": 0}
+
+    class FlakyPool:
+        @asynccontextmanager
+        async def connection(self):
+            attempts["count"] += 1
+            if attempts["count"] == 1:
+                raise OperationalError("SSL connection has been closed unexpectedly")
+            yield FakeConnection()
+
+    context = await token_service.authenticate_project_token(FlakyPool(), raw_token="prj_test")
+    assert context.project_id == "p-1"
+    assert attempts["count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_authenticate_reraises_persistent_db_outage(monkeypatch):
+    from psycopg import OperationalError
+
+    class DeadPool:
+        @asynccontextmanager
+        async def connection(self):
+            raise OperationalError("SSL connection has been closed unexpectedly")
+            yield  # pragma: no cover
+
+    with pytest.raises(OperationalError):
+        await token_service.authenticate_project_token(DeadPool(), raw_token="prj_test")
