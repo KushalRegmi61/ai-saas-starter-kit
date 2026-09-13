@@ -11,10 +11,13 @@ from __future__ import annotations
 
 import logging
 import operator
-from typing import Annotated
+from typing import Annotated, Any
 
+from auth.types import AssistantClaims
 from langchain_core.messages import BaseMessage
 from rag.types import AccessFilter, SearchMode, SearchResult
+
+from agent.types import ProjectCandidate
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,10 @@ class AgentState(dict):
     conversation_history: list[dict]       # prior turns: [{"role": ..., "content": ...}]
     memory_summary: str                    # rolling compacted summary
     search_mode: SearchMode                # passed through to tool
+    claims: AssistantClaims | None         # verified request identity, hidden from model
+    pool: Any                              # request-scoped assistant database pool
+    resolved_project: ProjectCandidate | None
+    project_candidates: list[ProjectCandidate]
 
     # ------------------------------------------------------------------ #
     # ReAct loop — mutated each iteration                                 #
@@ -66,6 +73,8 @@ def make_initial_state(
     conversation_history: list[dict] | None = None,
     memory_summary: str = "",
     search_mode: SearchMode = "auto",
+    claims: AssistantClaims | None = None,
+    pool: Any = None,
 ) -> dict:
     """Construct a fully-initialised AgentState dict for a new request."""
     logger.info(
@@ -83,6 +92,10 @@ def make_initial_state(
         "conversation_history": conversation_history or [],
         "memory_summary": memory_summary,
         "search_mode": search_mode,
+        "claims": claims,
+        "pool": pool,
+        "resolved_project": None,
+        "project_candidates": [],
         # react loop
         "messages": [],
         "intent": "",

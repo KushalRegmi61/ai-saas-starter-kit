@@ -76,6 +76,8 @@ async def stream_chat(
                 access_filter=_access_filter(claims),
                 conversation_history=prepared.turns,
                 memory_summary=prepared.summary,
+                claims=claims,
+                pool=pool,
             ):
                 if event["type"] == "done":
                     final_event = event

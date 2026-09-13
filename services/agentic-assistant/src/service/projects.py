@@ -8,7 +8,7 @@ from auth.store import record_audit_event_async
 from auth.types import AssistantClaims
 
 from agent.authz import can_assign_project, can_view_all_projects, can_view_assigned_projects
-from models import projects
+from models import project_discovery, projects
 from models.project_tokens import revoke_project_tokens_for_project_async
 
 
@@ -62,6 +62,19 @@ async def list_projects_for_actor(pool: Any, *, claims: AssistantClaims):
         if can_view_all_projects(claims.role):
             return await projects.list_projects_async(connection)
         return await projects.list_projects_for_lead_async(connection, claims.subject)
+
+
+async def search_projects_for_actor(
+    pool: Any, *, claims: AssistantClaims, reference: str, limit: int = 10
+):
+    """Search only projects visible to the caller, with a bounded result set."""
+
+    _require_project_viewer(claims)
+    async with pool.connection() as connection:
+        lead_id = claims.subject if can_view_assigned_projects(claims.role) else None
+        return await project_discovery.search_projects_async(
+            connection, reference=reference, lead_id=lead_id, limit=limit
+        )
 
 
 async def get_project_for_actor(pool: Any, *, claims: AssistantClaims, project_id: str):

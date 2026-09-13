@@ -45,7 +45,7 @@ async def generate_final(
 
     ctx = LLMContext(
         question=state["question"],
-        context=context or None,  # None if no tool results → honest "I don't know"
+        context=context or None,  # None if no tool results -> honest "I don't know"
         history=state.get("conversation_history", []),
         summary=state.get("memory_summary", ""),
     )
@@ -95,4 +95,13 @@ def _assemble_context(state: AgentState) -> str:
                 )
             blocks.append(str(content))
 
+    project_guidance = (
+        "Project-answer rules: structured project results are authoritative for "
+        "status, completion, blockers, feature counts, and history. Treat RAG "
+        "results as supporting context only. If resolution is ambiguous, ask "
+        "the user to choose from the returned candidates. Do not expose IDs, "
+        "claims, pool details, token data, or authorization internals."
+    )
+    if state.get("resolved_project") or state.get("project_candidates"):
+        blocks.insert(0, project_guidance)
     return "\n\n---\n\n".join(blocks)

@@ -52,6 +52,11 @@ requires retrieving data (tools must list the relevant tool names)
 Tool selection rules:
 - Only include tool names from the Available tools list above
 - Select all tools that could be relevant — the agent decides the order
+- For project questions, select resolve_project when the project is not already
+  identified, then select the independent project reads needed by the question
+- Never invent a project_id; use the ID returned by an authorized resolution
+- Independent project reads may be selected together so the tool runner can fan
+  them out before the final answer is synthesized
 - For ambiguous follow-up questions, prefer selecting tools over chitchat
 - If unsure, default to "needs_tools" with all available tools
 

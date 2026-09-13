@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 
 # ── Tool registrations (import triggers self-registration) ────────────────── #
+from agent.tools import project as _project_tools  # noqa: F401  registers project tools
 from agent.tools import search as _search_tool  # noqa: F401  registers search_knowledge_base
 
 # Re-export registry API so callers import from one place

@@ -26,6 +26,7 @@ import logging
 from collections.abc import AsyncIterator
 from functools import lru_cache
 
+from auth.types import AssistantClaims
 from langchain_core.messages import AIMessage
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
@@ -100,6 +101,8 @@ async def stream_graph(
     access_filter: AccessFilter | None = None,
     conversation_history: list[dict] | None = None,
     memory_summary: str = "",
+    claims: AssistantClaims | None = None,
+    pool=None,
 ) -> AsyncIterator[dict]:
     """Translate LangGraph events into WebSocket protocol events.
 
@@ -132,6 +135,8 @@ async def stream_graph(
         access_filter=access_filter,
         conversation_history=conversation_history,
         memory_summary=memory_summary,
+        claims=claims,
+        pool=pool,
         search_mode=search_mode,
     )
     initial_state["workflow_steps"] = ["started agent workflow"]
@@ -259,6 +264,8 @@ def ask(
     access_filter: AccessFilter | None = None,
     conversation_history: list[dict] | None = None,
     memory_summary: str | None = None,
+    claims: AssistantClaims | None = None,
+    pool=None,
 ) -> AskResponse:
     """Run the agent graph synchronously (tests + non-streaming callers)."""
     settings = get_agent_settings()
@@ -273,6 +280,8 @@ def ask(
             access_filter=access_filter,
             conversation_history=conversation_history,
             memory_summary=memory_summary or "",
+            claims=claims,
+            pool=pool,
             search_mode=search_mode,
         )
         initial_state["workflow_steps"] = ["started agent workflow"]

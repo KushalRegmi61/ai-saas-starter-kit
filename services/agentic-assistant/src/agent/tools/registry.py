@@ -49,6 +49,8 @@ class ToolEntry:
         always_include:         If True, ToolNode always receives this tool
                                 regardless of classifier selection (e.g. a
                                 future `discover` escape-hatch tool).
+        enabled:                Whether the tool is exposed to the active
+                                classifier and ToolNode.
         tags:                   Optional free-form labels for future routing,
                                 audit, or cost attribution.
     """
@@ -60,6 +62,7 @@ class ToolEntry:
     tool_fn: BaseTool
     requires_access_filter: bool = True
     always_include: bool = False
+    enabled: bool = True
     tags: tuple[str, ...] = field(default_factory=tuple)
 
 
@@ -98,8 +101,9 @@ def register(entry: ToolEntry) -> ToolEntry:
 
 def get_all_tools() -> list[BaseTool]:
     """All registered tool functions — passed to ToolNode."""
-    logger.debug("registry: get_all_tools count=%d", len(_REGISTRY))
-    return [e.tool_fn for e in _REGISTRY]
+    active = [e for e in _REGISTRY if e.enabled]
+    logger.debug("registry: get_all_tools count=%d", len(active))
+    return [e.tool_fn for e in active]
 
 
 def get_tools_by_name(names: list[str]) -> list[BaseTool]:
@@ -110,13 +114,13 @@ def get_tools_by_name(names: list[str]) -> list[BaseTool]:
     result = []
     for name in names:
         entry = _REGISTRY_INDEX.get(name)
-        if entry is None:
+        if entry is None or not entry.enabled:
             logger.warning("classifier selected unknown tool: %s — skipped", name)
         else:
             result.append(entry.tool_fn)
     # Always append always_include tools even if not in names
     for entry in _REGISTRY:
-        if entry.always_include and entry.tool_fn not in result:
+        if entry.enabled and entry.always_include and entry.tool_fn not in result:
             result.append(entry.tool_fn)
     return result
 
@@ -140,6 +144,8 @@ def get_tool_schemas_for_classifier() -> str:
         return "(no tools registered)"
     lines: list[str] = []
     for entry in _REGISTRY:
+        if not entry.enabled:
+            continue
         lines.append(
             f"- {entry.name} [{entry.category}]: {entry.description}\n"
             f"  Use when: {entry.when_to_use}"

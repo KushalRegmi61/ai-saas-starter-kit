@@ -170,7 +170,6 @@ async def list_projects_async(connection: Any) -> list[Project]:
     )
     return [_project_from_row(row) for row in await cursor.fetchall()]
 
-
 async def update_project_async(
     connection: Any,
     project_id: str,

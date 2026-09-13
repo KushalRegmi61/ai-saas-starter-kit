@@ -582,20 +582,49 @@ projects/token-setup-snippets.tsx
 projects/project-audit-timeline.tsx
 ```
 
-### Phase 5: manager agent integration
+### Phase 5: project-agent tool registration
 
-Add structured agent tools in the manager workflow:
+Register the read-only project-agent tool contracts through the existing agent
+tool registry:
 
 ```text
-get_project_status(project_id)
-get_project_history(project_id, since)
-get_project_metrics(project_id)
-search_project_knowledge(query, project_id)
+resolve_project(project_reference, project_id=None)
+get_project_status(project_reference, project_id=None)
+get_project_history(project_reference, project_id=None, since=None, limit=50)
+get_project_metrics(project_reference, project_id=None)
+search_project_knowledge(project_reference, query, project_id=None, top_k=4)
 ```
 
-The first three call the project service or read repository. The fourth calls
-RAG with a project-scoped access filter. The agent must never infer current
-status from retrieved prose when structured data exists.
+`project_reference` is the user-facing natural-language input. `project_id` is
+optional and can be supplied when an upstream caller already has a project ID,
+but it is only a hint until the authenticated project service validates it.
+The registration phase defines typed result envelopes, validation, registry
+metadata, and the service boundary. It does not add natural-language project
+discovery, DB/RAG fan-out, classifier routing, ReAct behavior, conversation
+state, or project-specific Qdrant filters.
+
+The project service must validate an optional ID against the caller's existing
+project visibility rules and reject a reference/ID mismatch. It must never use
+a model-provided ID as authorization. Phase 6 will supply authenticated claims
+and the assistant pool to these contracts and design resolution, ambiguity,
+parallel DB/RAG search, and RAG query construction in detail.
+
+### Phase 6: manager-agent project discovery and retrieval
+
+Implement agent-driven project discovery and retrieval on the existing ReAct
+graph. The classifier and agent select the registered tools; the server injects
+verified claims and the assistant pool through request-scoped state. Resolution
+searches only the caller's visible projects with bounded SQL matching, and
+ambiguous results return safe candidates for clarification. The existing
+LangGraph tool runner fans out independent status, metrics, history, and RAG
+calls, while final synthesis fans them back in. Structured project state is
+authoritative for current status, completion, blockers, counts, and history;
+RAG is supporting knowledge and runs only after a project is resolved.
+
+The optional `project_id` remains a validated hint, never authorization. A new
+explicit project reference takes precedence over recent conversation context.
+No project IDs, claims, database handles, token material, or internal
+authorization details are exposed to the model or final response.
 
 ## Testing and verification
 
@@ -716,11 +745,15 @@ blockers, daily updates, and feature history are persisted in normalized
 Postgres tables. Write tools require explicit lead confirmation in the coding
 agent conversation and remain validated and audited server-side.
 
-Manager-agent project tools and a separately deployed MCP service remain
-deferred. Phase 4 adds the assistant-web project dashboard and typed,
+Phase 5 registers five read-only project-agent tool contracts with typed
+project references, optional validated IDs, bounded parameters, and no write
+capabilities. Phase 6 now wires those tools into the existing authenticated
+ReAct workflow: role-scoped SQL resolution, ambiguity-safe candidates,
+parallel structured/RAG reads after resolution, and final synthesis with
+structured state authoritative over RAG. A separately deployed MCP service
+remains deferred. Phase 4 adds the assistant-web project dashboard and typed,
 role-authorized project-state reads for context, features, updates, history,
-and audit events. The POC does not accept a
-model-supplied `project_id`, expose generic SQL, or share project context
+and audit events. The POC does not expose generic SQL or share project context
 through module-global state.
 
 The new token unit tests, project persistence/service tests, Ruff checks, and

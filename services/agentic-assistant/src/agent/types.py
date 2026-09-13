@@ -1,7 +1,10 @@
-"""Assistant boundary types. Reuses rag contract types; no logic, no layer imports."""
+"""Assistant boundary types. Reuses rag contract types; no logic."""
+
+from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
-from rag.types import IngestionResult, SearchMode, Source
+from rag.types import IngestionResult, SearchMode, SearchResult, Source
 
 
 class AskRequest(BaseModel):
@@ -56,3 +59,60 @@ class ConversationTurn(BaseModel):
     answer: str
     sources: list[dict] = Field(default_factory=list)
     created_at: str | None = None
+
+
+ProjectResolutionStatus = Literal[
+    "resolved", "unresolved", "not_found", "ambiguous", "forbidden", "validation_error"
+]
+
+
+class ProjectCandidate(BaseModel):
+    """Safe project identity exposed to a project-agent tool."""
+
+    project_id: str
+    name: str
+    description: str | None = None
+
+
+class ProjectResolution(BaseModel):
+    """Resolution envelope shared by all project-agent tool results."""
+
+    status: ProjectResolutionStatus
+    project: ProjectCandidate | None = None
+    candidates: list[ProjectCandidate] = Field(default_factory=list, max_length=10)
+    message: str
+
+
+class ProjectStatusResult(BaseModel):
+    resolution: ProjectResolution
+    status: str | None = None
+    completion_percentage: int | None = Field(default=None, ge=0, le=100)
+    feature_counts: dict[str, int] = Field(default_factory=dict)
+    open_blocker_count: int | None = Field(default=None, ge=0)
+
+
+class ProjectHistoryItem(BaseModel):
+    feature_id: str
+    feature_name: str
+    old_status: str
+    new_status: str
+    changed_by: str
+    changed_at: datetime
+
+
+class ProjectHistoryResult(BaseModel):
+    resolution: ProjectResolution
+    items: list[ProjectHistoryItem] = Field(default_factory=list, max_length=100)
+
+
+class ProjectMetricsResult(BaseModel):
+    resolution: ProjectResolution
+    completion_percentage: int | None = Field(default=None, ge=0, le=100)
+    feature_counts: dict[str, int] = Field(default_factory=dict)
+    open_blocker_count: int | None = Field(default=None, ge=0)
+
+
+class ProjectKnowledgeResult(BaseModel):
+    resolution: ProjectResolution
+    results: list[SearchResult] = Field(default_factory=list, max_length=10)
+    query: str
