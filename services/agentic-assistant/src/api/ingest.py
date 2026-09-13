@@ -10,6 +10,7 @@ purge → `{"purged": false}` (never 500 the caller).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from auth.types import AssistantClaims
@@ -42,7 +43,8 @@ async def ingest_endpoint(
         tenant,
     )
     try:
-        result = index_document(
+        result = await asyncio.to_thread(
+            index_document,
             content,
             file.filename or source,
             source=source,
@@ -61,14 +63,14 @@ async def ingest_endpoint(
 
 
 @router.delete("/sources")
-def delete_source_endpoint(
+async def delete_source_endpoint(
     source: str,
     tenant: str | None = None,
     _authed: AssistantClaims | None = Depends(require_service_or_admin),
 ) -> dict[str, bool]:
     logger.info("ingest: purge start source=%s tenant=%s", source, tenant)
     try:
-        delete_indexed_source(source, tenant=tenant)
+        await asyncio.to_thread(delete_indexed_source, source, tenant=tenant)
     except Exception:
         logger.exception("RAG purge failed: source=%s", source)
         return {"purged": False}

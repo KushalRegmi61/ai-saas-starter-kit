@@ -42,7 +42,8 @@ def _mock_client(monkeypatch, settings) -> MagicMock:
 def test_chunk_id_deterministic():
     first = qr._chunk_id("s.pdf", 0, "hello")
     assert first == qr._chunk_id("s.pdf", 0, "hello")
-    assert len(first) == 64
+    assert len(first) == 36
+    assert first.count("-") == 4
     assert qr._chunk_id("s.pdf", 1, "hello") != first
     assert qr._chunk_id("s.pdf", 0, "other") != first
 

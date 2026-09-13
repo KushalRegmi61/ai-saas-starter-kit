@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 # Nodes whose start events emit a step to the client
 _STEP_NODES = frozenset({"classify_intent", "chitchat_respond", "agent", "tools", "generate_final"})
 # Nodes whose LLM tokens must NOT reach the client
-_SUPPRESS_TOKEN_NODES = frozenset({"classify_intent"})
+_SUPPRESS_TOKEN_NODES = frozenset({"classify_intent", "agent"})
 
 
 # --------------------------------------------------------------------------- #
@@ -145,8 +145,6 @@ async def stream_graph(
         metadata={"operation": "agent_ask_stream", "top_k": top_k},
     ) as span:
         final_output: dict = {}
-        active_node: str = ""
-
         async for event in graph.astream_events(initial_state, version="v2"):
             kind: str = event["event"]
             name: str = event.get("name", "")
@@ -163,12 +161,11 @@ async def stream_graph(
                 }
 
             # Track active node for token suppression
-            elif kind == "on_chat_model_start":
-                active_node = node_name
-
             # Token stream → token event (generation nodes only)
             elif kind == "on_chat_model_stream":
-                if active_node not in _SUPPRESS_TOKEN_NODES:
+                # Read the node from this event rather than mutable global state;
+                # LangGraph may interleave nested runnable events.
+                if node_name not in _SUPPRESS_TOKEN_NODES:
                     chunk = event["data"].get("chunk")
                     if chunk is not None:
                         token = _content_text(chunk.content)

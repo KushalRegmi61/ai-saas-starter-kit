@@ -9,7 +9,7 @@ from auth.tokens import mint_assistant_token, mint_assistant_ws_ticket
 from auth.types import AssistantClaims, AssistantUser, CreateUserRequest, LoginRequest
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from psycopg.errors import UniqueViolation
-from psycopg_pool import ConnectionPool
+from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel, Field
 
 from agent.authz import require_jwt_admin, require_jwt_user
@@ -38,7 +38,7 @@ class RoleUpdateRequest(BaseModel):
     role: str = Field(pattern="^(employee|lead|manager|admin)$")
 
 
-def get_user_pool(request: Request) -> ConnectionPool:
+def get_user_pool(request: Request) -> AsyncConnectionPool:
     pool = getattr(request.app.state, "assistant_user_pool", None)
     if pool is None:
         logger.warning("auth: user pool unavailable")
@@ -69,11 +69,12 @@ def _invalid_login() -> HTTPException:
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, pool: ConnectionPool = Depends(get_user_pool)) -> LoginResponse:
+async def login(payload: LoginRequest, pool: AsyncConnectionPool = Depends(get_user_pool)) -> LoginResponse:
     logger.info("auth: login attempt email=%s", payload.email.strip().lower())
     secret = _require_jwt_secret()
-    with pool.connection() as connection:
-        user = users.authenticate(connection, payload.email, payload.password)
+    async with pool.connection() as connection:
+        user = await users.authenticate_async(connection, payload.email, payload.password)
+        await connection.commit()
     if user is None:
         logger.warning("auth: login failed email=%s", payload.email.strip().lower())
         raise _invalid_login()
@@ -94,8 +95,8 @@ def login(payload: LoginRequest, pool: ConnectionPool = Depends(get_user_pool)) 
 
 
 @router.post("/ws-ticket", response_model=WebSocketTicketResponse)
-def websocket_ticket(
-    _pool: ConnectionPool = Depends(get_user_pool),
+async def websocket_ticket(
+    _pool: AsyncConnectionPool = Depends(get_user_pool),
     claims: AssistantClaims = Depends(require_jwt_user),
 ) -> WebSocketTicketResponse:
     logger.info("auth: ws-ticket mint subject=%s", claims.subject)
@@ -113,21 +114,23 @@ def websocket_ticket(
 
 
 @router.post("/users", response_model=AssistantUser, status_code=status.HTTP_201_CREATED)
-def create_user(
+async def create_user(
     payload: CreateUserRequest,
-    pool: ConnectionPool = Depends(get_user_pool),
+    pool: AsyncConnectionPool = Depends(get_user_pool),
     claims: AssistantClaims = Depends(require_jwt_admin),
 ) -> AssistantUser:
     logger.info("auth: create user email=%s role=%s", payload.email.strip().lower(), payload.role)
     try:
-        with pool.connection() as connection:
-            return users.create_user(
+        async with pool.connection() as connection:
+            result = await users.create_user_async(
                 connection,
                 email=payload.email,
                 password=payload.password,
                 role=payload.role,
                 actor_id=claims.subject,
             )
+            await connection.commit()
+            return result
     except UniqueViolation:
         logger.warning("auth: create user conflict email=%s", payload.email.strip().lower())
         raise HTTPException(
@@ -141,22 +144,22 @@ def create_user(
 
 
 @router.get("/users", response_model=list[AssistantUser])
-def list_users(
-    pool: ConnectionPool = Depends(get_user_pool),
+async def list_users(
+    pool: AsyncConnectionPool = Depends(get_user_pool),
     _claims: AssistantClaims = Depends(require_jwt_admin),
 ) -> list[AssistantUser]:
     logger.info("auth: list users")
-    with pool.connection() as connection:
-        result = users.list_users(connection)
+    async with pool.connection() as connection:
+        result = await users.list_users_async(connection)
     logger.info("auth: list users done count=%d", len(result))
     return result
 
 
 @router.patch("/users/{user_id}/role", response_model=AssistantUser)
-def update_role(
+async def update_role(
     user_id: str,
     payload: RoleUpdateRequest,
-    pool: ConnectionPool = Depends(get_user_pool),
+    pool: AsyncConnectionPool = Depends(get_user_pool),
     claims: AssistantClaims = Depends(require_jwt_admin),
 ) -> AssistantUser:
     logger.info("auth: role change user_id=%s role=%s", user_id, payload.role)
@@ -166,13 +169,14 @@ def update_role(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="An admin cannot change their own role",
         )
-    with pool.connection() as connection:
-        user = users.set_role(
+    async with pool.connection() as connection:
+        user = await users.set_role_async(
             connection,
             user_id=user_id,
             role=payload.role,
             actor_id=claims.subject,
         )
+        await connection.commit()
     if user is None:
         logger.warning("auth: role change user not found user_id=%s", user_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")

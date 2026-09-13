@@ -1,6 +1,6 @@
 """Startup and shutdown behavior for the assistant user pool."""
 
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,12 +14,19 @@ class FakePool:
     def __init__(self):
         self.closed = False
 
-    @contextmanager
-    def connection(self):
-        yield object()
+    @asynccontextmanager
+    async def connection(self):
+        yield self.Connection()
 
-    def close(self):
+    class Connection:
+        async def commit(self):
+            return None
+
+    async def close(self):
         self.closed = True
+
+    async def open(self, wait=False):
+        return None
 
 
 def test_configured_pool_is_seeded_and_closed(monkeypatch):
@@ -29,13 +36,20 @@ def test_configured_pool_is_seeded_and_closed(monkeypatch):
     monkeypatch.setattr(settings, "agentic_assistant_admin_password", "password")
     pool = FakePool()
     seeded = []
-    monkeypatch.setattr(main, "get_pool", lambda url: pool)
+    async def get_pool(url):
+        return pool
+
+    monkeypatch.setattr(main, "get_async_pool", get_pool)
     monkeypatch.setattr(
         main,
-        "ensure_and_seed",
-        lambda connection, email, password: seeded.append((email, password)),
+        "ensure_and_seed_async",
+        lambda connection, email, password: _record_seed(seeded, email, password),
     )
-    monkeypatch.setattr(main, "ensure_conversation_tables", lambda connection: None)
+
+    async def ensure_tables(connection):
+        return None
+
+    monkeypatch.setattr(main, "ensure_conversation_tables_async", ensure_tables)
 
     with TestClient(app):
         assert app.state.assistant_user_pool is pool
@@ -49,8 +63,16 @@ def test_unreachable_configured_database_fails_startup(monkeypatch):
     settings = get_agent_settings()
     monkeypatch.setattr(settings, "agentic_assistant_database_url", "postgresql://db")
     monkeypatch.setattr(
-        main, "get_pool", lambda url: (_ for _ in ()).throw(RuntimeError("db down"))
+        main, "get_async_pool", lambda url: _raise_async("db down")
     )
 
     with pytest.raises(RuntimeError, match="db down"), TestClient(app):
         pass
+
+
+async def _raise_async(message):
+    raise RuntimeError(message)
+
+
+async def _record_seed(seeded, email, password):
+    seeded.append((email, password))

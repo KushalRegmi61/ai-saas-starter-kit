@@ -7,19 +7,27 @@ bootstrap policy for the first admin.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
 from auth.crypto import hash_password, verify_password
 from auth.store import (
     ensure_assistant_tables,
+    ensure_assistant_tables_async,
     find_user_by_email,
+    find_user_by_email_async,
     find_user_by_id,
+    find_user_by_id_async,
     insert_user,
+    insert_user_async,
     record_audit_event,
+    record_audit_event_async,
     set_user_role,
+    set_user_role_async,
 )
 from auth.store import list_users as store_list_users
+from auth.store import list_users_async as store_list_users_async
 from auth.types import ASSISTANT_ROLES
 from psycopg_pool import ConnectionPool
 
@@ -40,6 +48,17 @@ def get_pool(database_url: str) -> ConnectionPool:
         pool.close()
         raise
     logger.info("models: assistant pool ready")
+    return pool
+
+
+async def get_async_pool(database_url: str):
+    """Open and validate the assistant's non-blocking database pool."""
+    from psycopg_pool import AsyncConnectionPool
+
+    if not database_url:
+        raise ValueError("AGENTIC_ASSISTANT_DATABASE_URL is missing")
+    pool = AsyncConnectionPool(conninfo=database_url, min_size=1, max_size=10, open=False)
+    await pool.open(wait=True)
     return pool
 
 
@@ -188,4 +207,101 @@ def set_role(
         target_id=user_id,
         detail={"old_role": existing["role"], "new_role": role},
     )
+    return updated
+
+
+async def ensure_and_seed_async(connection: Any, admin_email: str, admin_password: str) -> dict | None:
+    await ensure_assistant_tables_async(connection)
+    if not admin_email and not admin_password:
+        return None
+    if bool(admin_email) != bool(admin_password):
+        raise ValueError(
+            "AGENTIC_ASSISTANT_ADMIN_EMAIL and AGENTIC_ASSISTANT_ADMIN_PASSWORD must be set together"
+        )
+    email = _normalize_email(admin_email)
+    existing = await find_user_by_email_async(connection, email)
+    if existing is not None:
+        return existing
+    password_hash = await asyncio.to_thread(hash_password, admin_password)
+    user = await insert_user_async(connection, email=email, password_hash=password_hash, role="admin")
+    await record_audit_event_async(
+        connection,
+        actor_id=None,
+        actor_email=email,
+        action="admin.seeded",
+        resource="assistant_user",
+        target_id=user["id"],
+        detail={"role": "admin"},
+    )
+    return user
+
+
+async def authenticate_async(connection: Any, email: str, password: str) -> dict | None:
+    normalized_email = _normalize_email(email)
+    user = await find_user_by_email_async(connection, normalized_email)
+    valid = user is not None and await asyncio.to_thread(
+        verify_password, password, user["password_hash"]
+    )
+    if not valid:
+        await record_audit_event_async(
+            connection,
+            actor_id=user["id"] if user else None,
+            actor_email=normalized_email,
+            action="login.failed",
+            resource="assistant_user",
+            target_id=user["id"] if user else None,
+            detail={"reason": "invalid_credentials"},
+        )
+        return None
+    await record_audit_event_async(
+        connection,
+        actor_id=user["id"],
+        actor_email=user["email"],
+        action="login.success",
+        resource="assistant_user",
+        target_id=user["id"],
+    )
+    return {key: value for key, value in user.items() if key != "password_hash"}
+
+
+async def create_user_async(connection: Any, *, email: str, password: str, role: str, actor_id: str):
+    _require_role(role)
+    password_hash = await asyncio.to_thread(hash_password, password)
+    user = await insert_user_async(
+        connection, email=_normalize_email(email), password_hash=password_hash, role=role
+    )
+    await record_audit_event_async(
+        connection,
+        actor_id=actor_id,
+        actor_email=None,
+        action="user.created",
+        resource="assistant_user",
+        target_id=user["id"],
+        detail={"role": role},
+    )
+    return user
+
+
+async def list_users_async(connection: Any) -> list[dict]:
+    return await store_list_users_async(connection, limit=200)
+
+
+async def set_role_async(
+    connection: Any, *, user_id: str, role: str, actor_id: str
+) -> dict | None:
+    _require_role(role)
+    existing = await find_user_by_id_async(connection, user_id)
+    if existing is None:
+        return None
+    updated = await set_user_role_async(connection, user_id=user_id, role=role)
+    if updated is not None:
+        await record_audit_event_async(
+            connection,
+            actor_id=actor_id,
+            actor_email=None,
+            action="user.role_changed",
+            resource="assistant_user",
+            target_id=user_id,
+            detail={"old_role": existing["role"], "new_role": role},
+        )
     return updated

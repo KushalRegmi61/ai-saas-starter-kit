@@ -21,6 +21,17 @@ def _client():
     return QdrantClient(url=s.qdrant_url, api_key=s.qdrant_api_key or None)
 
 
+def _async_client():
+    try:
+        from qdrant_client import AsyncQdrantClient
+    except ImportError as exc:
+        raise ImportError("qdrant-client is required for retrieval") from exc
+    s = get_rag_settings()
+    if not s.qdrant_url:
+        raise ValueError("QDRANT_URL is missing. Set it before retrieval.")
+    return AsyncQdrantClient(url=s.qdrant_url, api_key=s.qdrant_api_key or None)
+
+
 @lru_cache(maxsize=1)
 def _cached_client():
     return _client()
@@ -233,4 +244,93 @@ def scroll_corpus(
                 docs.append(SimpleDoc(text=str(payload.get("text", "")), metadata=meta))
         if offset is None or len(docs) >= limit:
             break
+    return docs
+
+
+async def async_semantic_search(
+    query_vector: list[float],
+    top_k: int,
+    departments: list[str],
+    max_access_level: int,
+    tenant: str | None = None,
+) -> list[tuple[object, float]]:
+    """Async counterpart of semantic_search for chat retrieval."""
+    from rag.repo.neon_repo import SimpleDoc
+
+    client = _async_client()
+    try:
+        s = get_rag_settings()
+        points = (
+            await client.query_points(
+                collection_name=s.qdrant_collection,
+                query=query_vector,
+                query_filter=_qdrant_filter(departments, max_access_level, tenant),
+                limit=top_k,
+                with_payload=True,
+            )
+        ).points
+    finally:
+        await client.close()
+    return [
+        (
+            SimpleDoc(
+                text=str((p.payload or {}).get("text", "")),
+                metadata={
+                    "source": (p.payload or {}).get("source", "unknown"),
+                    "page": (p.payload or {}).get("page"),
+                    "chunk_index": (p.payload or {}).get("chunk_index"),
+                    "department": (p.payload or {}).get("department", "general"),
+                    "access_level": (p.payload or {}).get("access_level", "internal"),
+                    "tenant": (p.payload or {}).get("tenant", "default"),
+                },
+            ),
+            float(p.score or 0.0),
+        )
+        for p in points
+    ]
+
+
+async def async_scroll_corpus(
+    departments: list[str],
+    max_access_level: int,
+    limit: int = 10000,
+    tenant: str | None = None,
+) -> list[object]:
+    """Async counterpart of scroll_corpus for hybrid chat retrieval."""
+    from rag.repo.neon_repo import SimpleDoc
+    from rag.retrieval.rbac import passes_access_filter
+
+    client = _async_client()
+    docs: list[object] = []
+    offset = None
+    try:
+        while True:
+            try:
+                batch, offset = await client.scroll(
+                    collection_name=get_rag_settings().qdrant_collection,
+                    limit=min(1000, limit - len(docs)),
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+            except Exception:
+                return []
+            if not batch:
+                break
+            for point in batch:
+                payload = point.payload or {}
+                metadata = {
+                    "source": payload.get("source", "unknown"),
+                    "page": payload.get("page"),
+                    "chunk_index": payload.get("chunk_index"),
+                    "department": payload.get("department", "general"),
+                    "access_level": payload.get("access_level", "internal"),
+                    "tenant": payload.get("tenant", "default"),
+                }
+                if passes_access_filter(metadata, departments, max_access_level, tenant):
+                    docs.append(SimpleDoc(text=str(payload.get("text", "")), metadata=metadata))
+            if offset is None or len(docs) >= limit:
+                break
+    finally:
+        await client.close()
     return docs

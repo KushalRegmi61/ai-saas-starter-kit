@@ -28,7 +28,7 @@ from langchain_core.messages import ToolMessage
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
-from rag.retrieval.search import search_rag
+from rag.retrieval.search import search_rag_async
 from rag.types import AccessFilter, SearchMode
 
 from agent.tools.registry import ToolEntry, register
@@ -47,7 +47,7 @@ except ImportError:
 
 
 @tool("search_knowledge_base")
-def search_knowledge_base(
+async def search_knowledge_base(
     question: str,
     tool_call_id: Annotated[str, _InjectedToolCallId],
     access_filter: Annotated[AccessFilter | None, InjectedState("access_filter")],
@@ -75,7 +75,7 @@ def search_knowledge_base(
     )
 
     try:
-        response = search_rag(
+        response = await search_rag_async(
             question=question,
             top_k=top_k,
             search_mode=search_mode,

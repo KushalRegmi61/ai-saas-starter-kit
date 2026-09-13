@@ -9,12 +9,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from rag.repo import neon_repo
 
 from agent.config import get_agent_settings
 from agent.logging_config import configure_logging
 from api import auth, chat, health, ingest
-from models.conversations import ensure_conversation_tables
-from models.users import ensure_and_seed, get_pool
+from models.conversations import ensure_conversation_tables_async
+from models.users import ensure_and_seed_async, get_async_pool
 
 logger = configure_logging()
 
@@ -33,16 +34,17 @@ async def lifespan(app: FastAPI):
     pool = None
     if settings.agentic_assistant_database_url:
         logger.info("lifespan: database configured, opening pool")
-        pool = get_pool(settings.agentic_assistant_database_url)
+        pool = await get_async_pool(settings.agentic_assistant_database_url)
         try:
-            with pool.connection() as connection:
+            async with pool.connection() as connection:
                 logger.info("lifespan: ensuring tables + admin seed")
-                ensure_and_seed(
+                await ensure_and_seed_async(
                     connection,
                     settings.agentic_assistant_admin_email,
                     settings.agentic_assistant_admin_password,
                 )
-                ensure_conversation_tables(connection)
+                await ensure_conversation_tables_async(connection)
+                await connection.commit()
                 logger.info("lifespan: tables ready")
             if settings.agentic_assistant_admin_email:
                 logger.info(
@@ -59,8 +61,9 @@ async def lifespan(app: FastAPI):
             logger.info("lifespan: pool ready, serving")
             yield
         finally:
+            await neon_repo.close_async_pool()
             logger.info("lifespan: closing pool")
-            pool.close()
+            await pool.close()
             app.state.assistant_user_pool = None
             logger.info("lifespan: pool closed")
     else:

@@ -5,7 +5,7 @@ Single-tool RAG retrieval over Qdrant vectors + Neon registry/cache.
 
 ## Contract
 
-- Public surface: `rag.retrieval.search_rag(question, top_k, search_mode, access_filter) -> SearchResponse` (re-exported as `rag.search_rag`). Only entrypoint; router, RRF, reranker, cache, and RBAC are internal.
+- Public surfaces: synchronous `rag.retrieval.search_rag(...)` for compatibility and native async `rag.retrieval.search_rag_async(...) -> SearchResponse` for the streaming assistant (both re-exported from `rag`). Router, RRF, reranker, cache, and RBAC remain internal.
 - HTTP: the RAG library remains HTTP-agnostic. The agentic-assistant exposes
   authenticated `WS /ask` for persistent streamed chat and
   `GET /conversations/{id}` for owned history; its internal
@@ -29,7 +29,9 @@ Single-tool RAG retrieval over Qdrant vectors + Neon registry/cache.
 | Server → client | `error` | `{type, request_id?, code, text}` — `invalid_message`, `request_in_progress`, `invalid_request`, `not_found`, `forbidden`, `server_error` |
 | HTTP | `GET /conversations/{id}` | Owned history as `[{turn_index, question, answer, sources: [], created_at}]`; 404/403 on missing/forbidden |
 
-Parallel tool calls in one step merge (`sources`/`results` accumulate,
+The assistant chat path uses async psycopg/Qdrant/OpenAI adapters; semantic and
+corpus retrieval run concurrently, while CPU-only ranking is isolated from the
+event loop. Parallel tool calls in one step merge (`sources`/`results` accumulate,
 `workflow_steps` last-wins); every LLM call is bounded by
 `AGENTIC_ASSISTANT_LLM_TIMEOUT_SECONDS` (default 120s).
 

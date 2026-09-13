@@ -10,6 +10,7 @@ from typing import Any
 from auth.tokens import InvalidToken, decode_assistant_ws_ticket
 from auth.types import AssistantClaims
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel, Field, ValidationError
 from rag.types import SearchMode
 
@@ -17,7 +18,11 @@ from agent.authz import require_jwt_user
 from agent.config import get_agent_settings
 from agent.types import AskRequest, ConversationTurn
 from api.auth import get_user_pool
-from models.conversations import ConversationForbidden, ConversationNotFound, get_full_history
+from models.conversations import (
+    ConversationForbidden,
+    ConversationNotFound,
+    async_get_full_history,
+)
 from service.chat import stream_chat
 
 logger = logging.getLogger(__name__)
@@ -226,15 +231,15 @@ async def _send_json(
 
 
 @router.get("/conversations/{conversation_id}", response_model=list[ConversationTurn])
-def conversation_history(
+async def conversation_history(
     conversation_id: str,
-    pool=Depends(get_user_pool),
+    pool: AsyncConnectionPool = Depends(get_user_pool),
     claims: AssistantClaims = Depends(require_jwt_user),
 ) -> list[ConversationTurn]:
     logger.info("chat: history fetch conversation_id=%s", conversation_id)
     try:
-        with pool.connection() as connection:
-            history = get_full_history(connection, conversation_id, claims.subject)
+        async with pool.connection() as connection:
+            history = await async_get_full_history(connection, conversation_id, claims.subject)
         logger.info("chat: history done turns=%d", len(history))
         return [ConversationTurn(**turn) for turn in history]
     except ConversationNotFound:

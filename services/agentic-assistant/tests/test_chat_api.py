@@ -2,7 +2,7 @@
 
 import asyncio
 import threading
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 
 import pytest
 from auth.tokens import mint_assistant_token
@@ -25,8 +25,8 @@ SECRET = "test-assistant-secret"
 
 
 class FakePool:
-    @contextmanager
-    def connection(self):
+    @asynccontextmanager
+    async def connection(self):
         yield object()
 
 
@@ -130,10 +130,8 @@ def test_websocket_rejects_concurrent_request(client, monkeypatch):
 
 
 def test_history_route_requires_owner_and_returns_full_history(client, monkeypatch):
-    monkeypatch.setattr(
-        chat_api,
-        "get_full_history",
-        lambda connection, conversation_id, owner: [
+    async def fake_history(connection, conversation_id, owner):
+        return [
             {
                 "turn_index": 0,
                 "question": "hello",
@@ -141,8 +139,9 @@ def test_history_route_requires_owner_and_returns_full_history(client, monkeypat
                 "sources": [],
                 "created_at": None,
             },
-        ],
-    )
+        ]
+
+    monkeypatch.setattr(chat_api, "async_get_full_history", fake_history)
     response = client.get("/conversations/c-1", headers=_headers())
     assert response.status_code == 200
     assert response.json() == [
@@ -161,31 +160,31 @@ def test_history_route_requires_owner_and_returns_full_history(client, monkeypat
     [(ConversationNotFound, 404), (ConversationForbidden, 403)],
 )
 def test_history_route_hides_storage_errors_as_contract(client, monkeypatch, error, status_code):
-    def fail(*args):
+    async def fail(*args):
         raise error("c-1")
 
-    monkeypatch.setattr(chat_api, "get_full_history", fail)
+    monkeypatch.setattr(chat_api, "async_get_full_history", fail)
     response = client.get("/conversations/c-1", headers=_headers())
     assert response.status_code == status_code
 
 
 class _FakeConnection:
-    def commit(self):
-        pass
+    async def commit(self):
+        return None
 
-    @contextmanager
-    def transaction(self):
+    @asynccontextmanager
+    async def transaction(self):
         yield self
 
 
 class _FakeChatPool:
-    @contextmanager
-    def connection(self):
+    @asynccontextmanager
+    async def connection(self):
         yield _FakeConnection()
 
 
-@contextmanager
-def _noop_lock(connection, conversation_id):
+@asynccontextmanager
+async def _noop_lock(connection, conversation_id):
     yield None
 
 
@@ -215,7 +214,7 @@ def _patch_stream_chat(monkeypatch):
             changed=False,
         )
 
-    def fake_load(connection, conversation_id, owner):
+    async def fake_load(connection, conversation_id, owner):
         calls["loaded"].append(conversation_id)
         return ConversationSnapshot(
             conversation_id=conversation_id,
@@ -225,14 +224,14 @@ def _patch_stream_chat(monkeypatch):
             turns=[],
         )
 
-    def fake_append(connection, **kwargs):
+    async def fake_append(connection, **kwargs):
         calls["appended"].append(kwargs)
 
     monkeypatch.setattr(service_chat, "stream_graph", fake_graph)
     monkeypatch.setattr(service_chat, "prepare_memory", fake_prepare)
-    monkeypatch.setattr(service_chat, "conversation_lock", _noop_lock)
-    monkeypatch.setattr(service_chat, "load_snapshot", fake_load)
-    monkeypatch.setattr(service_chat, "append_exchange", fake_append)
+    monkeypatch.setattr(service_chat, "async_conversation_lock", _noop_lock)
+    monkeypatch.setattr(service_chat, "async_load_snapshot", fake_load)
+    monkeypatch.setattr(service_chat, "async_append_exchange", fake_append)
     monkeypatch.setattr(service_chat, "_access_filter", lambda claims: None)
     return calls
 

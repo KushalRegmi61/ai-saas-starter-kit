@@ -125,3 +125,93 @@ def record_audit_event(
         "VALUES (%s, %s, %s, %s, %s, %s)",
         (actor_id, actor_email, action, resource, target_id, payload),
     )
+
+
+async def ensure_assistant_tables_async(connection) -> None:
+    await connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS assistant_users (
+            id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'employee', created_at TIMESTAMPTZ DEFAULT now(),
+            updated_at TIMESTAMPTZ DEFAULT now()
+        )
+        """
+    )
+    await connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS assistant_audit_events (
+            id SERIAL PRIMARY KEY, actor_id TEXT, actor_email TEXT, action TEXT NOT NULL,
+            resource TEXT NOT NULL, target_id TEXT, detail JSONB DEFAULT '{}',
+            created_at TIMESTAMPTZ DEFAULT now()
+        )
+        """
+    )
+
+
+async def _async_find_user(connection, query: str, params: tuple) -> dict | None:
+    cursor = await connection.execute(query, params)
+    row = await cursor.fetchone()
+    if not row:
+        return None
+    return {**_public_shape(row), "password_hash": row[2]}
+
+
+async def find_user_by_email_async(connection, email: str) -> dict | None:
+    return await _async_find_user(
+        connection,
+        "SELECT id, email, password_hash, role, created_at, updated_at "
+        "FROM assistant_users WHERE email = %s",
+        (email.lower(),),
+    )
+
+
+async def find_user_by_id_async(connection, user_id: str) -> dict | None:
+    return await _async_find_user(
+        connection,
+        "SELECT id, email, password_hash, role, created_at, updated_at "
+        "FROM assistant_users WHERE id = %s",
+        (user_id,),
+    )
+
+
+async def insert_user_async(connection, *, email: str, password_hash: str, role: str) -> dict:
+    import uuid
+
+    cursor = await connection.execute(
+        "INSERT INTO assistant_users (id, email, password_hash, role) "
+        "VALUES (%s, %s, %s, %s) RETURNING id, email, password_hash, role, created_at, updated_at",
+        (str(uuid.uuid4()), email.lower(), password_hash, role),
+    )
+    return _public_shape(await cursor.fetchone())
+
+
+async def list_users_async(connection, *, limit: int = 200) -> list[dict]:
+    cursor = await connection.execute(
+        "SELECT id, email, password_hash, role, created_at, updated_at "
+        "FROM assistant_users ORDER BY created_at DESC LIMIT %s",
+        (limit,),
+    )
+    return [_public_shape(row) for row in await cursor.fetchall()]
+
+
+async def set_user_role_async(connection, *, user_id: str, role: str) -> dict | None:
+    cursor = await connection.execute(
+        "UPDATE assistant_users SET role = %s, updated_at = now() WHERE id = %s "
+        "RETURNING id, email, password_hash, role, created_at, updated_at",
+        (role, user_id),
+    )
+    row = await cursor.fetchone()
+    return _public_shape(row) if row else None
+
+
+async def record_audit_event_async(
+    connection, *, actor_id, actor_email, action, resource, target_id, detail=None
+) -> None:
+    from psycopg.types.json import Json
+
+    await connection.execute(
+        "INSERT INTO assistant_audit_events "
+        "(actor_id, actor_email, action, resource, target_id, detail) "
+        "VALUES (%s, %s, %s, %s, %s, %s)",
+        (actor_id, actor_email, action, resource, target_id, Json(detail or {})),
+    )

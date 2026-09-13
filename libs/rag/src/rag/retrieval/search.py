@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
@@ -76,6 +77,87 @@ def search_rag(
     ]
     response = SearchResponse(question=question, results=results, search_mode=resolved_mode)
     _cache_put(question, query_vector, response, resolved_mode, ctx_hash, tn)
+    return response
+
+
+async def search_rag_async(
+    question: str,
+    top_k: int = 4,
+    search_mode: SearchMode = "auto",
+    access_filter: AccessFilter | None = None,
+) -> SearchResponse:
+    """Native async retrieval path used by the streaming assistant."""
+    if not question or not question.strip():
+        raise ValueError("question must be non-empty")
+    top_k = max(1, min(int(top_k), 10))
+    filt = access_filter or AccessFilter(departments=["all"], max_access_level=0)
+    tn = normalize_tenant(filt.tenant) if filt.tenant is not None else None
+    resolved_mode, _reason = query_router.resolve_search_mode(question, search_mode)
+    settings = get_rag_settings()
+    candidate_k = max(settings.reranker_top_n, top_k * 4, 20)
+    query_vector = await embeddings.embed_query_async(question)
+
+    semantic_task = qdrant_repo.async_semantic_search(
+        query_vector, candidate_k, list(filt.departments), int(filt.max_access_level), tn
+    )
+    corpus_task = qdrant_repo.async_scroll_corpus(
+        list(filt.departments), int(filt.max_access_level), tenant=tn
+    )
+    semantic_results, corpus_docs = await asyncio.gather(semantic_task, corpus_task)
+    if resolved_mode == "hybrid":
+        corpus_texts = [d.page_content for d in corpus_docs]  # type: ignore[attr-defined]
+        keyword_ranking = await asyncio.to_thread(
+            hybrid.bm25_search, question, corpus_texts, top_k=candidate_k
+        )
+        candidates = hybrid.reciprocal_rank_fusion(
+            semantic_ranking=semantic_results,
+            keyword_ranking=keyword_ranking,
+            corpus_docs=corpus_docs,
+            top_k=candidate_k,
+        )
+    else:
+        candidates = semantic_results[:candidate_k]
+
+    ranked = await asyncio.to_thread(reranker.rerank, question, candidates, top_k=top_k)
+    chunk_ids = [
+        f"{d.metadata.get('source', '?')}:{d.metadata.get('chunk_index', '?')}"
+        for d, _ in ranked
+    ]
+    ctx_hash = query_cache.context_hash(chunk_ids)
+    try:
+        async with neon_repo.get_async_conn() as connection:
+            await connection.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            await query_cache.ensure_cache_table_async(
+                connection, dims=settings.embedding_dimensions
+            )
+            cached_response = await query_cache.get_cached_answer_async(
+                connection, question, query_vector, ctx_hash, tenant=tn
+            )
+            if cached_response is not None:
+                return SearchResponse(**cached_response)
+    except Exception as exc:
+        logger.warning("async retrieval cache lookup skipped: %s", exc)
+
+    results = [
+        SearchResult(text=d.page_content, source=source_from_metadata(d.metadata, score))
+        for d, score in ranked
+    ]
+    response = SearchResponse(question=question, results=results, search_mode=resolved_mode)
+    try:
+        async with neon_repo.get_async_conn() as connection:
+            await query_cache.store_cached_answer_async(
+                connection,
+                question=question,
+                embedding=query_vector,
+                answer=response.model_dump(),
+                search_mode=resolved_mode,
+                ctx_hash=ctx_hash,
+                tenant=tn,
+                ttl_hours=int(settings.cache_ttl_hours),
+            )
+            await connection.commit()
+    except Exception as exc:
+        logger.warning("async retrieval cache store skipped: %s", exc)
     return response
 
 

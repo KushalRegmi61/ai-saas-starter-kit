@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -10,6 +10,7 @@ from rag.config import get_rag_settings
 from rag.retrieval.rbac import normalize_tenant
 
 _pool = None
+_async_pool = None
 
 
 @dataclass
@@ -45,12 +46,43 @@ def close_pool() -> None:
         _pool = None
 
 
+async def init_async_pool() -> None:
+    global _async_pool
+    if _async_pool is not None:
+        return
+    from psycopg_pool import AsyncConnectionPool
+
+    s = get_rag_settings()
+    if not s.agentic_assistant_database_url:
+        raise ValueError("AGENTIC_ASSISTANT_DATABASE_URL is missing. Set it before retrieval.")
+    _async_pool = AsyncConnectionPool(
+        conninfo=s.agentic_assistant_database_url, min_size=2, max_size=10, open=False
+    )
+    await _async_pool.open(wait=True)
+
+
+async def close_async_pool() -> None:
+    global _async_pool
+    if _async_pool is not None:
+        await _async_pool.close()
+        _async_pool = None
+
+
 @contextmanager
 def get_conn():
     if _pool is None:
         init_pool()
     assert _pool is not None
     with _pool.connection() as conn:
+        yield conn
+
+
+@asynccontextmanager
+async def get_async_conn():
+    if _async_pool is None:
+        await init_async_pool()
+    assert _async_pool is not None
+    async with _async_pool.connection() as conn:
         yield conn
 
 

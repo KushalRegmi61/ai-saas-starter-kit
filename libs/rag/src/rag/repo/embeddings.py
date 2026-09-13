@@ -31,6 +31,20 @@ def _client():
     return OpenAI(**kwargs), s.embedding_model
 
 
+def _async_client():
+    try:
+        from openai import AsyncOpenAI
+    except ImportError as exc:
+        raise ImportError("openai is required for embeddings. Run: pip install openai") from exc
+    s = get_rag_settings()
+    if not s.openai_api_key:
+        raise ValueError("OPENAI_API_KEY is missing. Set it before retrieval.")
+    kwargs: dict = {"api_key": s.openai_api_key}
+    if s.openai_base_url:
+        kwargs["base_url"] = s.openai_base_url
+    return AsyncOpenAI(**kwargs), s.embedding_model
+
+
 @_retry()
 def embed_texts(texts: list[str]) -> list[list[float]]:
     client, model = _client()
@@ -41,3 +55,15 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
 @_retry()
 def embed_query(text: str) -> list[float]:
     return embed_texts([text])[0]
+
+
+async def embed_texts_async(texts: list[str]) -> list[list[float]]:
+    """Embed texts without blocking the assistant event loop."""
+    client, model = _async_client()
+    response = await client.embeddings.create(model=model, input=texts)
+    await client.close()
+    return [item.embedding for item in response.data]
+
+
+async def embed_query_async(text: str) -> list[float]:
+    return (await embed_texts_async([text]))[0]
