@@ -68,6 +68,7 @@ def test_llm_timeout_is_configurable_and_wired_to_factory(monkeypatch):
     llm_mod._chat_model()
     assert seen["request_timeout"] == 45.0
     assert seen["max_retries"] == settings.openai_retry_attempts
+    assert seen["streaming"] is True
 
 
 def test_llm_timeout_has_sane_default(monkeypatch):

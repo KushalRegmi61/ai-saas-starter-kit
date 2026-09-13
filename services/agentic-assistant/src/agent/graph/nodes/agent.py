@@ -21,10 +21,10 @@ from __future__ import annotations
 import logging
 
 from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 
 from agent.graph.state import AgentState
 from agent.llm import invoke_with_tools
-from agent.tracing import get_langchain_callbacks
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ _BUDGET_WARNING = (
 )
 
 
-async def agent_node(state: AgentState) -> dict:
+async def agent_node(state: AgentState, config: RunnableConfig | None = None) -> dict:
     """ReAct reasoning node — one Thought→(Action) iteration."""
     import agent.tools as tools_mod
 
@@ -86,7 +86,7 @@ async def agent_node(state: AgentState) -> dict:
         messages = [SystemMessage(content=system), *messages]
 
     response = await invoke_with_tools(
-        messages, tool_fns, callbacks=get_langchain_callbacks()
+        messages, tool_fns, config=config
     )
 
     usage = getattr(response, "usage_metadata", None)

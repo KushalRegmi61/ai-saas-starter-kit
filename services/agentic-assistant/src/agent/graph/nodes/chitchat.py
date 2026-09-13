@@ -14,15 +14,18 @@ from __future__ import annotations
 
 import logging
 
+from langchain_core.runnables import RunnableConfig
+
 from agent.graph.nodes.grounding import check_grounding
 from agent.graph.state import AgentState
 from agent.llm import LLMContext, stream_response
-from agent.tracing import get_langchain_callbacks
 
 logger = logging.getLogger(__name__)
 
 
-async def chitchat_respond(state: AgentState) -> dict:
+async def chitchat_respond(
+    state: AgentState, config: RunnableConfig | None = None
+) -> dict:
     """Stream a direct conversational reply. No tools, no retrieval."""
     logger.info("node chitchat: start question_len=%d", len(state.get("question", "")))
     ctx = LLMContext(
@@ -33,7 +36,7 @@ async def chitchat_respond(state: AgentState) -> dict:
     )
 
     full = ""
-    async for token in stream_response(ctx, callbacks=get_langchain_callbacks()):
+    async for token in stream_response(ctx, config=config):
         full += token
 
     logger.info("node chitchat: done answer_len=%d", len(full))

@@ -26,6 +26,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 
 from agent.config import get_agent_settings
@@ -86,6 +87,7 @@ class LLMContext:
 async def stream_response(
     ctx: LLMContext,
     *,
+    config: RunnableConfig | None = None,
     callbacks: list | None = None,
 ) -> AsyncIterator[str]:
     """Stream tokens for any generation scenario.
@@ -117,7 +119,7 @@ async def stream_response(
         token_count = 0
         async for chunk in llm.astream(
             messages,
-            config={"callbacks": callbacks or []},
+            config=_llm_config(config, callbacks),
         ):
             token = _content_text(chunk.content)
             if token:
@@ -132,6 +134,7 @@ async def stream_response(
 async def invoke_response(
     ctx: LLMContext,
     *,
+    config: RunnableConfig | None = None,
     callbacks: list | None = None,
 ) -> str:
     """Single async LLM call, no streaming. Returns the full response string.
@@ -149,7 +152,7 @@ async def invoke_response(
     try:
         response = await llm.ainvoke(
             messages,
-            config={"callbacks": callbacks or []},
+            config=_llm_config(config, callbacks),
         )
         text = _content_text(response.content)
         logger.info("llm invoke end: response_len=%d", len(text))
@@ -163,6 +166,7 @@ async def invoke_with_tools(
     messages: list[BaseMessage],
     tools: list,
     *,
+    config: RunnableConfig | None = None,
     callbacks: list | None = None,
 ) -> AIMessage:
     """Async LLM call with tools bound. Returns the full AIMessage.
@@ -175,7 +179,7 @@ async def invoke_with_tools(
     try:
         response = await llm.ainvoke(
             messages,
-            config={"callbacks": callbacks or []},
+            config=_llm_config(config, callbacks),
         )
         logger.info(
             "llm tool call end: has_tool_calls=%s",
@@ -202,6 +206,7 @@ def _chat_model() -> ChatOpenAI:
     kwargs: dict = {
         "model": settings.openai_chat_model,
         "temperature": 0,
+        "streaming": True,
         "api_key": settings.openai_api_key,
         "request_timeout": settings.openai_request_timeout_seconds,
         "max_retries": settings.openai_retry_attempts,
@@ -209,6 +214,25 @@ def _chat_model() -> ChatOpenAI:
     if settings.openai_base_url:
         kwargs["base_url"] = settings.openai_base_url
     return ChatOpenAI(**kwargs)
+
+
+def _llm_config(
+    config: RunnableConfig | None,
+    callbacks: list | None,
+) -> RunnableConfig:
+    """Preserve inherited LangGraph callbacks while supporting direct callers."""
+    if config is None:
+        return {"callbacks": callbacks or []}
+    if not callbacks:
+        return config
+
+    merged = dict(config)
+    inherited = merged.get("callbacks")
+    if inherited is None:
+        merged["callbacks"] = callbacks
+    elif isinstance(inherited, list):
+        merged["callbacks"] = [*inherited, *callbacks]
+    return merged
 
 
 def _build_messages(ctx: LLMContext) -> list[BaseMessage]:

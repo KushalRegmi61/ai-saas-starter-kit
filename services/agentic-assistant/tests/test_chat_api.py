@@ -256,6 +256,20 @@ async def test_stream_chat_done_carries_answer_and_mints_conversation_id(monkeyp
     assert len(calls["appended"]) == 1
 
 
+async def test_stream_chat_yields_tokens_before_persistence(monkeypatch):
+    claims = type("Claims", (), {"subject": "u-1", "role": "manager"})()
+    calls = _patch_stream_chat(monkeypatch)
+    stream = service_chat.stream_chat(_FakeChatPool(), AskRequest(question="hi"), claims)
+
+    assert (await stream.__anext__())["type"] == "step"
+    assert (await stream.__anext__()) == {"type": "token", "content": "hi "}
+    assert calls["appended"] == []
+
+    remaining = [event async for event in stream]
+    assert remaining[-1]["type"] == "done"
+    assert len(calls["appended"]) == 1
+
+
 async def test_stream_chat_follow_up_reuses_conversation_id(monkeypatch):
     from types import SimpleNamespace
 

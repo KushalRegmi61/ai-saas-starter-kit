@@ -39,15 +39,14 @@ from agent.graph.nodes.generate_final import generate_final
 from agent.graph.nodes.routing import route_after_agent, route_after_classify
 from agent.graph.state import AgentState, make_initial_state
 from agent.llm import _content_text
-from agent.tracing import trace_span
+from agent.tracing import get_langchain_callbacks, trace_span
 from agent.types import AskResponse
 
 logger = logging.getLogger(__name__)
 
 # Nodes whose start events emit a step to the client
 _STEP_NODES = frozenset({"classify_intent", "chitchat_respond", "agent", "tools", "generate_final"})
-# Nodes whose LLM tokens must NOT reach the client
-_SUPPRESS_TOKEN_NODES = frozenset({"classify_intent", "agent"})
+_GENERATION_NODES = frozenset({"chitchat_respond", "generate_final"})
 
 
 # --------------------------------------------------------------------------- #
@@ -145,7 +144,11 @@ async def stream_graph(
         metadata={"operation": "agent_ask_stream", "top_k": top_k},
     ) as span:
         final_output: dict = {}
-        async for event in graph.astream_events(initial_state, version="v2"):
+        async for event in graph.astream_events(
+            initial_state,
+            version="v2",
+            config={"callbacks": get_langchain_callbacks()},
+        ):
             kind: str = event["event"]
             name: str = event.get("name", "")
             metadata: dict = event.get("metadata", {})
@@ -165,7 +168,7 @@ async def stream_graph(
             elif kind == "on_chat_model_stream":
                 # Read the node from this event rather than mutable global state;
                 # LangGraph may interleave nested runnable events.
-                if node_name not in _SUPPRESS_TOKEN_NODES:
+                if node_name in _GENERATION_NODES:
                     chunk = event["data"].get("chunk")
                     if chunk is not None:
                         token = _content_text(chunk.content)
@@ -273,7 +276,10 @@ def ask(
             search_mode=search_mode,
         )
         initial_state["workflow_steps"] = ["started agent workflow"]
-        final_state = get_agent_graph().invoke(initial_state)
+        final_state = get_agent_graph().invoke(
+            initial_state,
+            config={"callbacks": get_langchain_callbacks()},
+        )
 
         answer = final_state.get("answer", "")
         if not answer:

@@ -17,16 +17,18 @@ from __future__ import annotations
 import logging
 
 from langchain_core.messages import ToolMessage
+from langchain_core.runnables import RunnableConfig
 
 from agent.graph.nodes.grounding import check_grounding
 from agent.graph.state import AgentState
 from agent.llm import LLMContext, stream_response
-from agent.tracing import get_langchain_callbacks
 
 logger = logging.getLogger(__name__)
 
 
-async def generate_final(state: AgentState) -> dict:
+async def generate_final(
+    state: AgentState, config: RunnableConfig | None = None
+) -> dict:
     """Stream final answer from accumulated tool results.
 
     Assembles context from all ToolMessages in state["messages"] then calls
@@ -45,7 +47,7 @@ async def generate_final(state: AgentState) -> dict:
     )
 
     full = ""
-    async for token in stream_response(ctx, callbacks=get_langchain_callbacks()):
+    async for token in stream_response(ctx, config=config):
         full += token
 
     logger.info(

@@ -19,11 +19,11 @@ import json
 import logging
 
 from langchain_core.messages import HumanMessage
+from langchain_core.runnables import RunnableConfig
 
 from agent.graph.state import AgentState
 from agent.llm import LLMContext, invoke_response
 from agent.tools.registry import get_tool_names, get_tool_schemas_for_classifier
-from agent.tracing import get_langchain_callbacks
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,9 @@ Return ONLY the JSON. No explanation, no markdown, no extra text.\
 """
 
 
-async def classify_intent(state: AgentState) -> dict:
+async def classify_intent(
+    state: AgentState, config: RunnableConfig | None = None
+) -> dict:
     """Classify intent and select tools. Appends HumanMessage to messages."""
     logger.info("node classify: start question_len=%d", len(state.get("question", "")))
     memory_block = _build_memory_block(state)
@@ -70,7 +72,7 @@ async def classify_intent(state: AgentState) -> dict:
         # No history/summary here — already embedded in system_prompt above
     )
 
-    raw = await invoke_response(ctx, callbacks=get_langchain_callbacks())
+    raw = await invoke_response(ctx, config=config)
     parsed = _parse_response(raw)
 
     logger.info(

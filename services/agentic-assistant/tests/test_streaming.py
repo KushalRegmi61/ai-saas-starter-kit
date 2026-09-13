@@ -1,5 +1,7 @@
 """Tests for stream_graph() in workflow.py — pure event translation."""
 
+import asyncio
+
 import pytest
 from rag.types import AccessFilter
 
@@ -38,7 +40,7 @@ async def test_stream_graph_emits_done_event(monkeypatch):
         }
 
     class FakeGraph:
-        def astream_events(self, state, version="v2"):
+        def astream_events(self, state, version="v2", config=None):
             return fake_astream_events(state, version)
 
     from agent.graph import workflow as wf
@@ -74,7 +76,7 @@ async def test_stream_graph_survives_non_dict_agent_end_output(monkeypatch):
                "data": {"output": final_state}, "metadata": {}}
 
     class FakeGraph:
-        def astream_events(self, state, version="v2"):
+        def astream_events(self, state, version="v2", config=None):
             return fake_astream_events(state, version)
 
     from agent.graph import workflow as wf
@@ -151,7 +153,7 @@ async def test_stream_graph_emits_token_events(monkeypatch):
                "data": {"output": final_state}, "metadata": {}}
 
     class FakeGraph:
-        def astream_events(self, state, version="v2"):
+        def astream_events(self, state, version="v2", config=None):
             return fake_astream_events(state, version)
 
     from agent.graph import workflow as wf
@@ -186,7 +188,7 @@ async def test_stream_graph_suppresses_classifier_tokens(monkeypatch):
                "data": {"output": final_state}, "metadata": {}}
 
     class FakeGraph:
-        def astream_events(self, state, version="v2"):
+        def astream_events(self, state, version="v2", config=None):
             return fake_astream_events(state, version)
 
     from agent.graph import workflow as wf
@@ -195,3 +197,91 @@ async def test_stream_graph_suppresses_classifier_tokens(monkeypatch):
     events = [e async for e in stream_graph("hi")]
     token_events = [e for e in events if e["type"] == "token"]
     assert token_events == [], "classifier tokens must be suppressed"
+
+
+@pytest.mark.asyncio
+async def test_stream_graph_forwards_generation_chunks_before_graph_completion(monkeypatch):
+    """A provider chunk must be observable without waiting for graph completion."""
+    monkeypatch.setattr(get_agent_settings(), "openai_api_key", "test-key")
+    graph_release = asyncio.Event()
+    final_state = {
+        "answer": "Hello world", "sources": [], "grounded": False,
+        "results": [], "workflow_steps": [], "messages": [],
+    }
+
+    async def fake_astream_events(state, version="v2"):
+        yield {
+            "event": "on_chain_start",
+            "name": "generate_final",
+            "data": {},
+            "metadata": {"langgraph_node": "generate_final"},
+        }
+        yield {
+            "event": "on_chat_model_stream",
+            "name": "ChatOpenAI",
+            "data": {"chunk": type("Chunk", (), {"content": "Hello "})()},
+            "metadata": {"langgraph_node": "generate_final"},
+        }
+        await graph_release.wait()
+        yield {
+            "event": "on_chain_end",
+            "name": "LangGraph",
+            "data": {"output": final_state},
+            "metadata": {},
+        }
+
+    class FakeGraph:
+        def astream_events(self, state, version="v2", config=None):
+            return fake_astream_events(state, version)
+
+    from agent.graph import workflow as wf
+    monkeypatch.setattr(wf, "get_agent_graph", lambda: FakeGraph())
+
+    events = stream_graph("hi")
+    assert (await events.__anext__())["type"] == "step"
+    token_event = await events.__anext__()
+    assert token_event == {"type": "token", "content": "Hello "}
+
+    graph_release.set()
+    remaining = [event async for event in events]
+    assert remaining[-1]["type"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_stream_graph_only_forwards_generation_node_tokens(monkeypatch):
+    monkeypatch.setattr(get_agent_settings(), "openai_api_key", "test-key")
+    final_state = {
+        "answer": "final", "sources": [], "grounded": False,
+        "results": [], "workflow_steps": [], "messages": [],
+    }
+
+    async def fake_astream_events(state, version="v2"):
+        for node, content in (("agent", "hidden reasoning"), ("generate_final", "visible")):
+            yield {
+                "event": "on_chat_model_stream",
+                "name": "ChatOpenAI",
+                "data": {"chunk": type("Chunk", (), {"content": content})()},
+                "metadata": {"langgraph_node": node},
+            }
+        yield {
+            "event": "on_chat_model_stream",
+            "name": "ChatOpenAI",
+            "data": {"chunk": type("Chunk", (), {"content": "unknown"})()},
+            "metadata": {},
+        }
+        yield {
+            "event": "on_chain_end",
+            "name": "LangGraph",
+            "data": {"output": final_state},
+            "metadata": {},
+        }
+
+    class FakeGraph:
+        def astream_events(self, state, version="v2", config=None):
+            return fake_astream_events(state, version)
+
+    from agent.graph import workflow as wf
+    monkeypatch.setattr(wf, "get_agent_graph", lambda: FakeGraph())
+
+    events = [event async for event in stream_graph("hi")]
+    assert [event["content"] for event in events if event["type"] == "token"] == ["visible"]
