@@ -1,10 +1,55 @@
 export type AssistantRole = "employee" | "lead" | "manager" | "admin";
 
+export type ProjectStatus = "ON_TRACK" | "AT_RISK" | "BLOCKED" | "COMPLETED";
+
 export interface AssistantUser {
   id: string;
   email: string;
   role: AssistantRole;
   created_at: string;
+}
+
+export interface AssistantProject {
+  id: string;
+  name: string;
+  description: string | null;
+  lead_id: string | null;
+  status: ProjectStatus;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface CreateProjectPayload {
+  name: string;
+  description?: string | null;
+}
+
+export interface UpdateProjectPayload {
+  name?: string;
+  description?: string | null;
+  status?: ProjectStatus;
+}
+
+export interface ProjectLeadPayload {
+  lead_id: string | null;
+}
+
+export interface AssistantProjectToken {
+  id: string;
+  project_id: string;
+  label: string;
+  expires_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string | null;
+}
+
+export interface CreateProjectTokenPayload {
+  label: string;
+}
+
+export interface CreatedProjectToken extends AssistantProjectToken {
+  token: string;
 }
 
 export interface LoginResponse {
@@ -116,6 +161,29 @@ export interface IngestionResult {
   chunks_indexed: number;
 }
 
+export interface IngestJobAccepted {
+  job_id: string;
+  status: string;
+}
+
+export interface IngestJobStatus {
+  job_id: string;
+  status: "queued" | "running" | "done" | "failed";
+  result?: IngestionResult | null;
+  error?: string | null;
+}
+
 export interface DeleteSourceResponse {
   purged: boolean;
+}
+
+/** One row of the backend documents registry (GET /sources). */
+export interface IndexedDocument {
+  tenant?: string | null;
+  source: string;
+  department?: string | null;
+  access_level?: string | null;
+  chunks_count: number;
+  indexed_at?: string | null;
+  status?: string | null;
 }

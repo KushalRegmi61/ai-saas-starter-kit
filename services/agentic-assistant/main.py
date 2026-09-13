@@ -13,8 +13,10 @@ from rag.repo import neon_repo
 
 from agent.config import get_agent_settings
 from agent.logging_config import configure_logging
-from api import auth, chat, health, ingest
+from api import auth, chat, health, ingest, project_tokens, projects
 from models.conversations import ensure_conversation_tables_async
+from models.project_tokens import ensure_project_token_tables_async
+from models.projects import ensure_project_tables_async
 from models.users import ensure_and_seed_async, get_async_pool
 
 logger = configure_logging()
@@ -44,6 +46,8 @@ async def lifespan(app: FastAPI):
                     settings.agentic_assistant_admin_password,
                 )
                 await ensure_conversation_tables_async(connection)
+                await ensure_project_tables_async(connection)
+                await ensure_project_token_tables_async(connection)
                 await connection.commit()
                 logger.info("lifespan: tables ready")
             if settings.agentic_assistant_admin_email:
@@ -92,4 +96,6 @@ app.add_middleware(
 app.include_router(health.router, tags=["health"])
 app.include_router(ingest.router, tags=["ingest"])
 app.include_router(auth.router, tags=["auth"])
+app.include_router(projects.router, tags=["projects"])
+app.include_router(project_tokens.router, tags=["project-tokens"])
 app.include_router(chat.router, tags=["chat"])

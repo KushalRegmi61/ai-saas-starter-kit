@@ -26,6 +26,26 @@ logger = logging.getLogger(__name__)
 
 _bearer = HTTPBearer(auto_error=False)
 
+# Project authorization policy shared by the future project API and MCP
+# adapters. These are capabilities, not authentication mechanisms; callers
+# must still present a verified assistant JWT before applying them.
+PROJECT_ASSIGN_ROLES = frozenset({"admin"})
+PROJECT_VIEW_ALL_ROLES = frozenset({"admin", "manager"})
+PROJECT_VIEW_ASSIGNED_ROLES = frozenset({"lead"})
+PROJECT_ACCESS_ROLES = PROJECT_ASSIGN_ROLES | PROJECT_VIEW_ALL_ROLES | PROJECT_VIEW_ASSIGNED_ROLES
+
+
+def can_assign_project(role: str) -> bool:
+    return role in PROJECT_ASSIGN_ROLES
+
+
+def can_view_all_projects(role: str) -> bool:
+    return role in PROJECT_VIEW_ALL_ROLES
+
+
+def can_view_assigned_projects(role: str) -> bool:
+    return role in PROJECT_VIEW_ASSIGNED_ROLES
+
 
 def _service_configured() -> bool:
     return bool(get_agent_settings().agent_service_token)
@@ -120,9 +140,7 @@ def require_service_or_admin(
             logger.warning("auth: mutation route presented invalid JWT")
             claims = None
         if claims is not None:
-            logger.info(
-                "auth: JWT caller accepted role=%s subject=%s", claims.role, claims.subject
-            )
+            logger.info("auth: JWT caller accepted role=%s subject=%s", claims.role, claims.subject)
             return require_admin(claims)
     if not _service_configured() and not _jwt_configured():
         logger.warning("auth: mutation route hit with no credentials configured")

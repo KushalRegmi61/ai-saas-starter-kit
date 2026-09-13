@@ -1,10 +1,19 @@
 import type {
   AssistantUser,
+  AssistantProject,
+  AssistantProjectToken,
   CreateUserPayload,
+  CreateProjectPayload,
+  CreateProjectTokenPayload,
+  CreatedProjectToken,
   DeleteSourceResponse,
-  IngestionResult,
+  IndexedDocument,
+  IngestJobAccepted,
+  IngestJobStatus,
   LoginResponse,
   WebSocketTicketResponse,
+  ProjectLeadPayload,
+  UpdateProjectPayload,
   ConversationTurn,
   StreamEvent,
 } from "../types";
@@ -107,20 +116,114 @@ export async function updateAssistantUserRole(
   );
 }
 
+export async function listProjects(token: string): Promise<AssistantProject[]> {
+  return fetchAssistant<AssistantProject[]>("/projects", { method: "GET" }, token);
+}
+
+export async function getProject(projectId: string, token: string): Promise<AssistantProject> {
+  return fetchAssistant<AssistantProject>(`/projects/${projectId}`, { method: "GET" }, token);
+}
+
+export async function createProject(
+  payload: CreateProjectPayload,
+  token: string
+): Promise<AssistantProject> {
+  return fetchAssistant<AssistantProject>(
+    "/projects",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+    token
+  );
+}
+
+export async function updateProject(
+  projectId: string,
+  payload: UpdateProjectPayload,
+  token: string
+): Promise<AssistantProject> {
+  return fetchAssistant<AssistantProject>(
+    `/projects/${projectId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+    token
+  );
+}
+
+export async function assignProjectLead(
+  projectId: string,
+  payload: ProjectLeadPayload,
+  token: string
+): Promise<AssistantProject> {
+  return fetchAssistant<AssistantProject>(
+    `/projects/${projectId}/lead`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+    token
+  );
+}
+
+export async function listProjectTokens(
+  projectId: string,
+  token: string
+): Promise<AssistantProjectToken[]> {
+  return fetchAssistant<AssistantProjectToken[]>(
+    `/projects/${projectId}/tokens`,
+    { method: "GET" },
+    token
+  );
+}
+
+export async function createProjectToken(
+  projectId: string,
+  payload: CreateProjectTokenPayload,
+  token: string
+): Promise<CreatedProjectToken> {
+  return fetchAssistant<CreatedProjectToken>(
+    `/projects/${projectId}/tokens`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+    token
+  );
+}
+
+export async function revokeProjectToken(
+  projectId: string,
+  tokenId: string,
+  token: string
+): Promise<AssistantProjectToken> {
+  return fetchAssistant<AssistantProjectToken>(
+    `/projects/${projectId}/tokens/${tokenId}/revoke`,
+    { method: "POST" },
+    token
+  );
+}
+
 export async function ingestDocument(
   file: File,
   source: string,
   department: string | undefined,
   accessLevel: string | undefined,
   token: string
-): Promise<IngestionResult> {
+): Promise<IngestJobAccepted> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("source", source);
   if (department) formData.append("department", department);
   if (accessLevel) formData.append("access_level", accessLevel);
 
-  return fetchAssistant<IngestionResult>(
+  return fetchAssistant<IngestJobAccepted>(
     "/ingest",
     {
       method: "POST",
@@ -130,11 +233,33 @@ export async function ingestDocument(
   );
 }
 
+export async function getIngestStatus(
+  jobId: string,
+  token: string
+): Promise<IngestJobStatus> {
+  return fetchAssistant<IngestJobStatus>(
+    `/ingest/${jobId}`,
+    { method: "GET" },
+    token
+  );
+}
+
+export async function listSources(token: string): Promise<IndexedDocument[]> {
+  return fetchAssistant<IndexedDocument[]>(
+    "/sources",
+    { method: "GET" },
+    token
+  );
+}
+
 export async function deleteSource(
   source: string,
-  token: string
+  token: string,
+  tenant?: string | null
 ): Promise<DeleteSourceResponse> {
-  const query = new URLSearchParams({ source }).toString();
+  const params: Record<string, string> = { source };
+  if (tenant) params.tenant = tenant;
+  const query = new URLSearchParams(params).toString();
   return fetchAssistant<DeleteSourceResponse>(
     `/sources?${query}`,
     { method: "DELETE" },

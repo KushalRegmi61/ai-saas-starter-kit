@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, Shield, LogOut, MessageSquare } from "lucide-react";
+import { Bot, FolderKanban, Shield, LogOut, MessageSquare } from "lucide-react";
 import { useAuth } from "../auth/auth-provider";
 
 export function AppNav() {
@@ -34,6 +34,20 @@ export function AppNav() {
             <MessageSquare className="w-3.5 h-3.5" />
             <span>Chat</span>
           </Link>
+
+          {user && user.role !== "employee" && (
+            <Link
+              href="/projects"
+              className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-medium transition-colors ${
+                pathname === "/projects"
+                  ? "bg-slate-800 text-indigo-300 font-semibold"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <FolderKanban className="w-3.5 h-3.5" />
+              <span>Projects</span>
+            </Link>
+          )}
 
           {isAdmin && (
             <Link

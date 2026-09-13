@@ -304,4 +304,20 @@ async def set_role_async(
             target_id=user_id,
             detail={"old_role": existing["role"], "new_role": role},
         )
+        if existing["role"] == "lead" and role != "lead":
+            from models.project_tokens import revoke_project_tokens_for_creator_async
+
+            invalidated = await revoke_project_tokens_for_creator_async(
+                connection, creator_id=user_id
+            )
+            for token in invalidated:
+                await record_audit_event_async(
+                    connection,
+                    actor_id=actor_id,
+                    actor_email=None,
+                    action="project.mcp_tokens_invalidated",
+                    resource="assistant_project_mcp_token",
+                    target_id=token.id,
+                    detail={"project_id": token.project_id, "reason": "lead_role_removed"},
+                )
     return updated
