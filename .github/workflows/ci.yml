@@ -147,7 +147,7 @@ jobs:
         with:
           images: kushalregmi61/agentic_assistant
           tags: |
-            type=sha,format=long,prefix=sha-
+            type=sha,format=short,prefix=sha-
             type=raw,value=latest
 
       - name: Set up Docker Buildx
