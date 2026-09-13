@@ -108,9 +108,7 @@ def list_files(prefix: str = "") -> list[FileMetadata]:
 def get_file_metadata(key: str) -> FileMetadata | None:
     client = get_s3_client()
     try:
-        response = client.head_object(
-            Bucket=settings.b2_bucket_name, Key=key
-        )
+        response = client.head_object(Bucket=settings.b2_bucket_name, Key=key)
     except ClientError as e:
         # Only treat 404/NoSuchKey as "not found"; re-raise other errors
         code = e.response.get("Error", {}).get("Code", "")
@@ -174,9 +172,7 @@ def get_presigned_url(
         raise RuntimeError(f"B2 presign failed for '{key}': {e}") from e
 
 
-def get_presigned_upload_url(
-    key: str, content_type: str, expires_in: int = 900
-) -> str:
+def get_presigned_upload_url(key: str, content_type: str, expires_in: int = 900) -> str:
     """Generate a presigned PUT URL for a direct browser→B2 upload.
 
     The signature binds both the exact object ``key`` and the ``Content-Type``:
@@ -201,6 +197,26 @@ def get_presigned_upload_url(
         )
     except ClientError as e:
         raise RuntimeError(f"B2 presign(put) failed for '{key}': {e}") from e
+
+
+def get_object_bytes(key: str) -> bytes:
+    """Fetch the full bytes of an object.
+
+    Used by RAG auto-indexing during upload finalization: with direct
+    browser→B2 uploads the API never sees the payload, so it re-reads the
+    object from B2 to hand the bytes to the indexer. Raises RuntimeError on
+    S3 failure; the caller checks existence separately via
+    ``get_file_metadata``.
+    """
+    client = get_s3_client()
+    try:
+        response = client.get_object(
+            Bucket=settings.b2_bucket_name,
+            Key=key,
+        )
+        return response["Body"].read()
+    except ClientError as e:
+        raise RuntimeError(f"B2 get failed for '{key}': {e}") from e
 
 
 def get_object_head_bytes(key: str, length: int = 32) -> bytes:

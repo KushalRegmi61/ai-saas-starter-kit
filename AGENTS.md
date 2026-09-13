@@ -8,6 +8,8 @@ This is the authoritative control surface for all coding agents. Read this first
 ```
 apps/web/          Next.js 16 frontend (App Router, Tailwind v4, shadcn/ui)
 services/api/      FastAPI backend (layered: types/config/repo/service/runtime)
+services/agentic-assistant/  Agentic knowledge assistant (LangGraph over libs/rag, LangFuse tracing)
+libs/rag/          Shared RAG library (importable engine: retrieval + ingestion, auth-agnostic)
 packages/shared/   Shared TypeScript types
 docs/              System of record (features, workflows, security, reliability)
 docs/exec-plans/   Execution plans and tech debt tracker
@@ -87,7 +89,15 @@ pnpm lint              # frontend lint (eslint)
 pnpm build             # frontend type check + build
 pnpm test:web          # frontend unit tests (vitest)
 pnpm lint:api          # backend lint (ruff)
+pnpm lint:shared        # shared package lint (ruff)
+pnpm lint:worker        # worker lint (ruff)
+pnpm lint:rag           # rag library lint (ruff)
+pnpm lint:agent         # agentic-assistant lint (ruff)
 pnpm test:api          # backend tests (pytest)
+pnpm test:shared       # shared package tests (pytest)
+pnpm test:worker       # worker tests (pytest)
+pnpm test:rag          # rag library tests (pytest)
+pnpm test:agent        # agentic-assistant tests (pytest)
 pnpm check:structure   # structural boundary tests
 pnpm test:e2e          # Playwright e2e tests (local / pre-release only — see below)
 ```
@@ -150,3 +160,13 @@ If documentation and implementation conflict, update docs in the same PR. Docume
 - Add tests with every change
 - Never bypass lint rules without explicit instruction
 - Ask before making destructive or irreversible changes
+
+## 12. CodeNib Context (MCP)
+
+- The `codenib` MCP server (configured in `opencode.json`) serves the prebuilt BM25 + symbol-graph + dense-vector index for this repo (typescript + python).
+- Use `explore_context` before editing unfamiliar code and `dependency_subgraph` for impact analysis instead of manual grep-hopping.
+- If `codenib codegraph status` reports a stale index, rebuild it before relying on its results.
+- The index only verifies against a fully committed tree: commit any change (code, docs, or config) and rebuild afterwards, or `explore_context` degrades to location-only results.
+- Rebuild with `codenib index <repo> --preset full --rebuild` plus the MiniLM flags below. `search_zoekt` is unavailable (`zoekt-git-index` binary not installed on this machine); `search_regex` covers that ground.
+- Dense embeddings run on CPU with MiniLM-L6-v2: prefix `CUDA_VISIBLE_DEVICES=""` and append `--embedding-model sentence-transformers/all-MiniLM-L6-v2 --embedding-dimension 384`. The default CodeRankEmbed model OOMs this machine's GPU.
+- Keep the stub `tsconfig.json` and `packages/shared/tsconfig.json` files in place; the indexer creates them and deleting them marks the index stale.

@@ -1,3 +1,60 @@
+[project]
+name = "ai-saas-api"
+version = "0.1.0"
+description = "FastAPI backend for the AI SaaS starter kit"
+requires-python = ">=3.11"
+# Workspace-local dependencies (PEP 621 names must match the sibling
+# pyproject `name` fields so the CodeNib graph resolves project edges):
+#   ai-saas-shared -> services/shared (imported as `shared.*`)
+#   ai-saas-auth   -> libs/auth       (imported as `auth.*`)
+# Installed as editable workspace members (uv workspace `knowledge-os`;
+# `[tool.uv.sources]` below), mirroring the TS `workspace:*` convention in
+# apps/web/package.json. Third-party floors mirror the last tested pins;
+# exact versions lock in the root `uv.lock`. No ai-saas-rag: retrieval and
+# indexing live in services/agentic-assistant; this service only forwards
+# bytes over HTTP via repo/ingest_client.py.
+dependencies = [
+    "ai-saas-shared",
+    "ai-saas-auth",
+    "bcrypt>=5.0.0",
+    "fastapi>=0.139.2",
+    "uvicorn[standard]>=0.51.0",
+    "python-multipart>=0.0.32",
+    "python-dotenv>=1.2.2",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "boto3>=1.43.52",
+    "Pillow>=12.3.0",
+    "pypdf>=6.16.1",
+    "httpx>=0.28.1",
+    "stripe>=12.5.1",
+    # Exact pins: the genblaze trio must move in lockstep on the same 0.3.x
+    # line (genblaze-nvidia requires genblaze-core within that range).
+    # nvidia 0.3.2 + core 0.3.6 is a broken pair upstream (`local_file_url`
+    # ImportError), so the trio stays on the last tested triple. Bump together
+    # deliberately and re-run the test suite.
+    "genblaze-core==0.3.6",
+    "genblaze-nvidia==0.3.1",
+    "genblaze-s3==0.3.5",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.15.22", "pytest>=9.1.1", "pytest-asyncio>=1.4.0"]
+
+[tool.uv.sources]
+ai-saas-shared = { workspace = true }
+ai-saas-auth = { workspace = true }
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+# Flat layout: top-level `app/` package + `main.py` entrypoint (unlike the
+# src-layout siblings). Scoped explicitly so the graph owns exactly app*.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100

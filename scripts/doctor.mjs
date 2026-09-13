@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ENV_FILE = resolve(REPO_ROOT, ".env");
-const VENV_UVICORN = resolve(REPO_ROOT, "services/api/.venv/bin/uvicorn");
+const VENV_UVICORN = resolve(REPO_ROOT, ".venv/bin/uvicorn");
 
 // Required minimum versions. Bump as upstream support shifts.
 const REQUIRED_NODE_MAJOR = 20;
@@ -173,8 +173,8 @@ function checkPython() {
 function checkVenv() {
   if (!existsSync(VENV_UVICORN)) {
     fail(
-      "Backend virtualenv not set up (services/api/.venv/bin/uvicorn missing)",
-      "Run: `cd services/api && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cd ../..`",
+      "Backend virtualenv not set up (.venv/bin/uvicorn missing)",
+      "Run: `uv sync --all-packages --all-groups` from the repo root",
     );
   }
 }

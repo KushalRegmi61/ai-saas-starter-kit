@@ -1,0 +1,49 @@
+[project]
+name = "ai-saas-auth"
+version = "0.1.0"
+description = "Shared assistant identity for the AI SaaS starter backend services (roles, password hashing, token mint/verify, user store)"
+requires-python = ">=3.11"
+# Stateless library: no FastAPI, no pool, no settings ownership. Callers pass
+# explicit params (secrets, TTLs) and their own DB connection. Consumed by
+# backend services via editable path pins (e.g. -e ../../libs/auth).
+dependencies = [
+    "pydantic>=2",
+    "bcrypt>=4.1",
+    "python-jose[cryptography]>=3.3",
+]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "B",
+    "UP",
+    "T20",
+    "SIM",
+    "RUF",
+]
+ignore = [
+    "E501",
+    "B008",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["auth"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -2,6 +2,8 @@ import logging
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
+from shared.keys import has_path_traversal
+
 from app.config import settings
 from app.repo import (
     delete_file,
@@ -11,7 +13,6 @@ from app.repo import (
     increment_download_count,
     list_files,
 )
-from app.service.keys import has_path_traversal
 from app.types import FileMetadata, UploadStats
 from app.types.formatting import humanize_bytes
 from app.types.stats import DailyUploadCount
@@ -156,6 +157,15 @@ def remove_file(user_id: str, key: str) -> None:
     """Own the key, then delete the file. Raises RuntimeError on B2 failure."""
     _require_owned(user_id, key)
     delete_file(key)
+    # Best-effort purge on the agentic-assistant: the B2 delete already
+    # succeeded, so an unconfigured or failing agent must never fail the
+    # request — skip quietly or log and move on.
+    try:
+        from app.repo import ingest_client
+
+        ingest_client.delete_indexed_source_remote(key, tenant=settings.agentic_assistant_tenant)
+    except Exception:
+        logger.exception("RAG purge failed: key=%s", key)
 
 
 def get_upload_activity(user_id: str, days: int = 7) -> list[DailyUploadCount]:

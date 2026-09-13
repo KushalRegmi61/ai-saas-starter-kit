@@ -1,0 +1,298 @@
+from rag.repo.neon_repo import SimpleDoc as _SimpleDoc
+from rag.retrieval.rbac import normalize_tenant, passes_access_filter
+from rag.types import AccessFilter
+
+
+def SimpleDocForTest(**kw):
+    meta = {"source": "s", "department": "general", "access_level": "internal"}
+    meta.update(kw.pop("metadata", {}))
+    return _SimpleDoc(text=kw.pop("text", "hello"), metadata=meta)
+
+
+class _FakeConnCtx:
+    def __init__(self):
+        self.conn = object()
+
+    def __call__(self):
+        return self
+
+    def __enter__(self):
+        return self.conn
+
+    def __exit__(self, *exc):
+        return False
+
+
+class FakeConn:
+    """Mock connection recording execute(sql, params) calls (test_registry.py style)."""
+
+    def __init__(self, fetchone=None):
+        self.executed = []
+        self._fetchone = fetchone
+        self.rowcount = 0
+
+    def execute(self, sql, params=None):
+        self.executed.append((sql, params))
+        return self
+
+    def fetchone(self):
+        return self._fetchone
+
+    def __enter__(self):
+        return self.conn
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_access_filter_carries_tenant_and_attributes():
+    filt = AccessFilter(
+        departments=["hr", "all", "general"],
+        max_access_level=1,
+        tenant="api",
+        attributes={"project": "knowledge-assistant"},
+    )
+    assert filt.tenant == "api"
+    assert filt.attributes == {"project": "knowledge-assistant"}
+
+
+def test_access_filter_defaults_preserve_legacy_behavior():
+    filt = AccessFilter(departments=["all"], max_access_level=0)
+    assert filt.tenant is None
+    assert filt.attributes == {}
+
+
+def test_normalize_tenant():
+    assert normalize_tenant(None) == "default"
+    assert normalize_tenant("") == "default"
+    assert normalize_tenant("api") == "api"
+
+
+def test_passes_access_filter_enforces_tenant():
+    meta = {"department": "hr", "access_level": "internal", "tenant": "api"}
+    assert passes_access_filter(meta, ["hr"], 3, tenant="api") is True
+    assert passes_access_filter(meta, ["hr"], 3, tenant="other") is False
+    # Legacy points without a tenant key read as "default"
+    legacy = {"department": "hr", "access_level": "internal"}
+    assert passes_access_filter(legacy, ["hr"], 3, tenant="default") is True
+    assert passes_access_filter(legacy, ["hr"], 3, tenant="api") is False
+    # No tenant in filter disables the check (legacy behavior)
+    assert passes_access_filter(meta, ["hr"], 3) is True
+
+
+def test_qdrant_filter_includes_tenant():
+    from rag.repo import qdrant_repo
+
+    f = qdrant_repo._qdrant_filter(["hr"], 1, tenant="api")
+    keys = [c.key for c in f.must]
+    assert "tenant" in keys
+    tenant_cond = next(c for c in f.must if c.key == "tenant")
+    assert tenant_cond.match.value == "api"
+
+
+def test_qdrant_filter_without_tenant_unchanged():
+    from rag.repo import qdrant_repo
+
+    f = qdrant_repo._qdrant_filter(["hr"], 1)
+    assert [c.key for c in f.must] == ["department", "access_level"]
+
+
+def test_index_document_stamps_tenant_and_explicit_metadata(monkeypatch):
+    import rag.ingestion.index as idx
+
+    captured = {}
+
+    monkeypatch.setattr(idx, "load_bytes", lambda content, filename: [SimpleDocForTest()])
+    monkeypatch.setattr(idx, "chunk_documents", lambda docs: docs)
+    monkeypatch.setattr(idx, "embed_texts", lambda texts: [[0.0] * 4 for _ in texts])
+    monkeypatch.setattr(idx, "ensure_collection", lambda: None)
+    def fake_upsert(chunks, vectors):
+        captured["payload"] = dict(chunks[0].metadata)
+        return 1
+
+    monkeypatch.setattr(idx, "upsert_chunks", fake_upsert)
+    monkeypatch.setattr(idx, "get_conn", _FakeConnCtx())
+    monkeypatch.setattr(idx, "ensure_tables", lambda conn: None)
+    monkeypatch.setattr(idx, "get_document", lambda conn, source, tenant="default": None)
+    monkeypatch.setattr(idx, "delete_chunks_by_source", lambda source, tenant="default": None)
+    monkeypatch.setattr(idx, "flush_cache", lambda conn, tenant=None: 0)
+    monkeypatch.setattr(idx, "upsert_document", lambda conn, **kw: captured.update(registry=kw))
+
+    from rag.ingestion.index import index_document
+
+    index_document(b"x", "hr_policy.pdf", source="s", department="hr", access_level="confidential", tenant="api")
+    assert captured["payload"]["tenant"] == "api"
+    assert captured["payload"]["department"] == "hr"
+    assert captured["payload"]["access_level"] == "confidential"
+    assert captured["registry"]["tenant"] == "api"
+
+
+def test_semantic_search_meta_carries_tenant(monkeypatch):
+    from types import SimpleNamespace
+
+    import rag.repo.qdrant_repo as qr
+
+    point = SimpleNamespace(
+        payload={
+            "text": "hello",
+            "source": "s",
+            "page": 1,
+            "chunk_index": 0,
+            "department": "hr",
+            "access_level": "internal",
+            "tenant": "api",
+        },
+        score=0.9,
+    )
+    client = SimpleNamespace(
+        query_points=lambda **kw: SimpleNamespace(points=[point]),
+    )
+    monkeypatch.setattr(qr, "_cached_client", lambda: client)
+    monkeypatch.setattr(
+        qr, "get_rag_settings", lambda: SimpleNamespace(qdrant_collection="chunks")
+    )
+    results = qr.semantic_search([0.1] * 4, 5, ["hr"], 3, tenant="api")
+    assert results[0][0].metadata["tenant"] == "api"
+
+
+def test_scroll_corpus_meta_carries_tenant(monkeypatch):
+    from types import SimpleNamespace
+
+    import rag.repo.qdrant_repo as qr
+
+    point = SimpleNamespace(
+        payload={
+            "text": "hello",
+            "source": "s",
+            "page": 1,
+            "chunk_index": 0,
+            "department": "hr",
+            "access_level": "internal",
+            "tenant": "api",
+        },
+    )
+    client = SimpleNamespace(
+        scroll=lambda **kw: ([point], None),
+    )
+    monkeypatch.setattr(qr, "_cached_client", lambda: client)
+    monkeypatch.setattr(
+        qr, "get_rag_settings", lambda: SimpleNamespace(qdrant_collection="chunks")
+    )
+    docs = qr.scroll_corpus(["hr"], 3, limit=10, tenant="api")
+    assert docs[0].metadata["tenant"] == "api"
+
+
+def test_ensure_tables_adds_tenant_column_and_composite_key():
+    from rag.repo import neon_repo
+
+    conn = FakeConn()
+    neon_repo.ensure_tables(conn)
+    stmts = [sql for sql, _ in conn.executed]
+    assert any("ADD COLUMN IF NOT EXISTS tenant" in s for s in stmts)
+    assert any("tenant" in s and "source" in s and "PRIMARY KEY" in s for s in stmts)
+
+
+def test_upsert_document_scopes_conflict_to_tenant():
+    from rag.repo import neon_repo
+
+    conn = FakeConn()
+    neon_repo.upsert_document(conn, source="s", content_hash="h", chunks_count=1, tenant="api")
+    sql, params = conn.executed[-1]
+    assert "ON CONFLICT (tenant, source)" in sql
+    assert params[0] == "api"  # tenant is the FIRST bound param after the column reorder
+    assert params[1] == "s"
+
+
+def test_get_and_delete_document_filter_by_tenant():
+    from rag.repo import neon_repo
+
+    conn = FakeConn()
+    neon_repo.get_document(conn, "s", tenant="api")
+    assert "tenant = %s" in conn.executed[-1][0]
+    assert conn.executed[-1][1] == ("api", "s")
+    neon_repo.delete_document(conn, "s", tenant="api")
+    assert "tenant = %s" in conn.executed[-1][0]
+
+
+def test_delete_chunks_by_source_scopes_to_tenant(monkeypatch):
+    from rag.repo import qdrant_repo
+
+    seen = {}
+
+    class FakeClient:
+        def delete(self, collection_name, points_selector):
+            seen["filter"] = points_selector
+
+    monkeypatch.setattr(qdrant_repo, "_cached_client", lambda: FakeClient())
+    qdrant_repo.delete_chunks_by_source("s", tenant="api")
+    keys = [c.key for c in seen["filter"].must]
+    assert keys == ["source", "tenant"]
+
+    qdrant_repo.delete_chunks_by_source("s")
+    assert [c.key for c in seen["filter"].must] == ["source"]
+
+
+def test_cache_key_is_tenant_scoped():
+    from rag.retrieval.query_cache import make_cache_key
+
+    assert make_cache_key("hi", "ctx") == make_cache_key("hi", "ctx")
+    assert make_cache_key("hi", "ctx", tenant="api") != make_cache_key("hi", "ctx")
+    assert make_cache_key("hi", "ctx", tenant="api") == make_cache_key("hi", "ctx", tenant="api")
+    assert make_cache_key("hi", "ctx", tenant=None) == make_cache_key("hi", "ctx")
+
+
+def test_semantic_lookup_filters_by_tenant():
+    from rag.retrieval import query_cache
+
+    conn = FakeConn()
+    query_cache.get_cached_answer(conn, "hi", [0.0] * 4, "ctx", tenant="api")
+    tier2_sql = conn.executed[-1][0]
+    assert "tenant = %s" in tier2_sql
+    assert "api" in conn.executed[-1][1]
+
+
+def test_search_rag_normalizes_empty_tenant_to_default_and_preserves_none(monkeypatch):
+    from types import SimpleNamespace
+
+    import rag.retrieval.search as search_mod
+    from rag.repo import embeddings, qdrant_repo
+    from rag.retrieval import query_router, reranker
+
+    seen: dict = {}
+    monkeypatch.setattr(query_router, "resolve_search_mode", lambda q, m: ("semantic", "t"))
+    monkeypatch.setattr(embeddings, "embed_query", lambda q: [0.1] * 4)
+    monkeypatch.setattr(
+        search_mod, "get_rag_settings", lambda: SimpleNamespace(reranker_top_n=5)
+    )
+
+    def fake_semantic(vector, k, departments, level, tenant=None):
+        seen.setdefault("semantic", []).append(tenant)
+        return [(SimpleDocForTest(metadata={"source": "s", "chunk_index": 0}), 0.9)]
+
+    def fake_scroll(departments, level, tenant=None, **kw):
+        seen.setdefault("scroll", []).append(tenant)
+        return [SimpleDocForTest(metadata={"source": "s", "chunk_index": 0})]
+
+    monkeypatch.setattr(qdrant_repo, "semantic_search", fake_semantic)
+    monkeypatch.setattr(qdrant_repo, "scroll_corpus", fake_scroll)
+    monkeypatch.setattr(reranker, "rerank", lambda q, c, top_k: c[:top_k])
+    _get = lambda *a, **k: seen.setdefault("get", []).append(a[4]) or None  # noqa: E731
+    _put = lambda *a, **k: seen.setdefault("put", []).append(a[5])  # noqa: E731
+    monkeypatch.setattr(search_mod, "_cache_get", _get)
+    monkeypatch.setattr(search_mod, "_cache_put", _put)
+    empty = AccessFilter(departments=["all"], max_access_level=0, tenant="")
+    search_mod.search_rag("hi?", access_filter=empty)
+    assert [seen[k][-1] for k in ("semantic", "scroll", "get", "put")] == ["default"] * 4
+    legacy = AccessFilter(departments=["all"], max_access_level=0)
+    search_mod.search_rag("hi?", access_filter=legacy)
+    assert [seen[k][-1] for k in ("semantic", "scroll", "get", "put")] == [None] * 4
+
+
+def test_flush_cache_scopes_to_tenant():
+    from rag.retrieval import query_cache
+
+    conn = FakeConn()
+    query_cache.flush_cache(conn, tenant="api")
+    assert "tenant = %s" in conn.executed[-1][0]
+    query_cache.flush_cache(conn)
+    assert conn.executed[-1][0] == "DELETE FROM query_cache"

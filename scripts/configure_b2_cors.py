@@ -7,9 +7,9 @@ request from your frontend. The bucket must allow that origin, method, and the
 ``Content-Type`` header, or the browser's preflight blocks the upload. Server-side
 S3 calls are unaffected by CORS, so this only matters once real browsers upload.
 
-Usage (from the repo root, using the API venv which already has boto3):
+Usage (from the repo root, using the workspace venv which already has boto3):
 
-    services/api/.venv/bin/python scripts/configure_b2_cors.py \
+    .venv/bin/python scripts/configure_b2_cors.py \
         --origin https://your-app.vercel.app --origin http://localhost:3000
 
 Reads B2 credentials from the same B2_* env vars the app uses (load them however

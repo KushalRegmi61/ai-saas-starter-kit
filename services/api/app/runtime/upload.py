@@ -57,7 +57,11 @@ async def complete_upload(
         # finalize_upload does blocking B2 I/O (head + Range GET, and a delete on
         # a bad payload). Offload it so the event loop isn't blocked.
         result = await run_in_threadpool(
-            finalize_upload, key=body.key, user_id=current_user.id
+            finalize_upload,
+            key=body.key,
+            user_id=current_user.id,
+            department=body.department,
+            access_level=body.access_level,
         )
     except UploadError as e:
         logger.warning("Upload finalize rejected: %s", e.detail)

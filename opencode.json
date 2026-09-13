@@ -1,0 +1,24 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "codenib": {
+      "type": "local",
+      "command": [
+        "/home/pursottam/.local/bin/codenib",
+        "mcp",
+        "/home/pursottam/mine/projects/ai-saas-starter-kit"
+      ],
+      "enabled": true
+    },
+    "project-status": {
+      "type": "remote",
+      "url": "http://localhost:8000/mcp",
+      "oauth": false,
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer {env:PROJECT_MCP_TOKEN}"
+      }
+    }
+  },
+  "instructions": ["AGENTS.md"]
+}

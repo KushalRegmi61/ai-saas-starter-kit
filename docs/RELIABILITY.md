@@ -21,6 +21,9 @@ Reliability expectations and practices for this project.
 - Structured JSON logging via Python stdlib
 - Every request gets a `request_id` for tracing
 - Log levels: ERROR for failures, WARNING for degraded state, INFO for requests
+- The agentic-assistant service emits the same JSON schema (`timestamp`, `level`, `logger`, `service`, `message`) via `agent/logging_config.py::configure_logging`, with per-step INFO logs across lifespan, API routes, service orchestration, agent graph nodes, tools, and models. Secrets (tokens, passwords, API keys) are never logged — only configured True/False flags.
+- Streaming chat uses native async database, retrieval, tool, and graph boundaries. Same-conversation requests are serialized with an async PostgreSQL advisory lock; cancellation releases the lock and partial answers are not persisted. Classifier and internal ReAct model output remains suppressed, while final generation chunks are forwarded as `token` events.
+- `AGENTIC_ASSISTANT_LOG_FORMAT` controls the rendering: `auto` (default — `pretty` on a local TTY, `json` otherwise), `json` (production/aggregators), or `pretty` (single-line `HH:MM:SS LEVEL module message` with colour on TTYs for readable local runs).
 
 ## Observability
 
@@ -77,7 +80,7 @@ The download counter and the `/metrics` counters are **in-process, per replica**
 - Build/start command, `/health` (API) or `/signin` (web) healthcheck, and
   `ON_FAILURE` restart policy are codified per service in `railway.json`.
 - Zero-downtime deploys via rolling updates.
-- Reproducible builds: exact-pinned `requirements.txt` (API) and
+- Reproducible builds: `uv.lock` (`uv sync --frozen`, Python) and
   `pnpm install --frozen-lockfile` (web).
 - Environment-specific configuration via env vars (no config files in prod).
 - `/health` returns `200` even when B2 is unreachable (body reports

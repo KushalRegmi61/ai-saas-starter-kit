@@ -31,6 +31,10 @@ class CompleteUploadRequest(BaseModel):
     """Sent to POST /upload/complete once the browser's PUT to B2 succeeds."""
 
     key: str
+    # Declared RAG metadata for auto-indexing. Optional — unknown values are
+    # rejected (400); omitted values are left for the indexer to infer.
+    department: str | None = None
+    access_level: str | None = None
 
 
 class FileUploadResponse(BaseModel):
@@ -41,3 +45,4 @@ class FileUploadResponse(BaseModel):
     content_type: str
     uploaded_at: datetime
     url: str | None = None
+    rag_indexed: bool = False

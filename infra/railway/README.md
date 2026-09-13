@@ -19,10 +19,11 @@ Deploy both services (web + api) on Railway.
 - **Port**: `3000`
 
 ### API Service (FastAPI)
-- **Root Directory**: `services/api`
-- **Build Command**: `pip install -r requirements.txt` (versions are exact-pinned
-  in `requirements.txt` for reproducibility)
-- **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+- **Root Directory**: repo root (the API builds from the `knowledge-os` uv
+  workspace, so it needs `libs/*` + `services/shared` alongside `services/api`)
+- **Build Command**: `pip install uv && uv sync --frozen --no-dev` (exact versions
+  locked in `uv.lock` for reproducibility)
+- **Start Command**: `PYTHONPATH=services/api .venv/bin/uvicorn main:app --host 0.0.0.0 --port $PORT`
 - **Healthcheck**: `/health`
 
 ## Environment Variables

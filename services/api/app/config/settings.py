@@ -153,6 +153,15 @@ class Settings(BaseSettings):
     # then sends `Authorization: Bearer <token>`.
     metrics_token: str = ""
 
+    # Tenant stamp forwarded with every ingest/purge call so the
+    # agentic-assistant scopes API-uploaded sources to this tenant.
+    agentic_assistant_tenant: str = "api"
+
+    # Agentic-assistant ingestion surface (POST /ingest, DELETE /sources).
+    # Empty = finalize/delete skip forwarding (uploads still succeed).
+    agent_service_url: str = Field(default="", validation_alias="AGENTIC_ASSISTANT_SERVICE_URL")
+    agent_service_token: str = Field(default="", validation_alias="AGENTIC_ASSISTANT_SERVICE_TOKEN")
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     @property
