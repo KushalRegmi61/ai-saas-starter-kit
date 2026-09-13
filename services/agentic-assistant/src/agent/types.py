@@ -83,12 +83,50 @@ class ProjectResolution(BaseModel):
     message: str
 
 
-class ProjectStatusResult(BaseModel):
+class ProjectFeatureSummary(BaseModel):
+    name: str
+    description: str | None = None
+    status: str
+    updated_at: datetime | None = None
+
+
+class ProjectBlockerSummary(BaseModel):
+    title: str
+    description: str | None = None
+    severity: str
+    status: str
+    created_at: datetime | None = None
+    resolved_at: datetime | None = None
+
+
+class ProjectUpdateSummary(BaseModel):
+    summary: str
+    completion_percentage: int = Field(ge=0, le=100)
+    created_at: datetime | None = None
+
+
+class ProjectOverviewResult(BaseModel):
     resolution: ProjectResolution
+    project: ProjectCandidate | None = None
     status: str | None = None
     completion_percentage: int | None = Field(default=None, ge=0, le=100)
+    features_by_status: dict[str, list[str]] = Field(default_factory=dict)
     feature_counts: dict[str, int] = Field(default_factory=dict)
-    open_blocker_count: int | None = Field(default=None, ge=0)
+    open_blocker_count: int = Field(default=0, ge=0)
+    latest_update: ProjectUpdateSummary | None = None
+
+
+class ProjectFeaturesResult(BaseModel):
+    resolution: ProjectResolution
+    features: list[ProjectFeatureSummary] = Field(default_factory=list, max_length=100)
+    feature_counts: dict[str, int] = Field(default_factory=dict)
+    total_returned: int = Field(default=0, ge=0)
+
+
+class ProjectBlockersResult(BaseModel):
+    resolution: ProjectResolution
+    blockers: list[ProjectBlockerSummary] = Field(default_factory=list, max_length=50)
+    total_returned: int = Field(default=0, ge=0)
 
 
 class ProjectHistoryItem(BaseModel):
@@ -100,16 +138,10 @@ class ProjectHistoryItem(BaseModel):
     changed_at: datetime
 
 
-class ProjectHistoryResult(BaseModel):
+class ProjectActivityResult(BaseModel):
     resolution: ProjectResolution
-    items: list[ProjectHistoryItem] = Field(default_factory=list, max_length=100)
-
-
-class ProjectMetricsResult(BaseModel):
-    resolution: ProjectResolution
-    completion_percentage: int | None = Field(default=None, ge=0, le=100)
-    feature_counts: dict[str, int] = Field(default_factory=dict)
-    open_blocker_count: int | None = Field(default=None, ge=0)
+    updates: list[ProjectUpdateSummary] = Field(default_factory=list, max_length=50)
+    history: list[ProjectHistoryItem] = Field(default_factory=list, max_length=50)
 
 
 class ProjectKnowledgeResult(BaseModel):

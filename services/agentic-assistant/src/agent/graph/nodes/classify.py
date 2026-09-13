@@ -52,9 +52,12 @@ requires retrieving data (tools must list the relevant tool names)
 Tool selection rules:
 - Only include tool names from the Available tools list above
 - Select all tools that could be relevant — the agent decides the order
-- For project questions, select resolve_project when the project is not already
-  identified, then select the independent project reads needed by the question
-- Never invent a project_id; use the ID returned by an authorized resolution
+- For project questions, select the smallest relevant project tool set; each
+  project tool resolves the natural-language reference server-side
+- Use get_project_overview for overall state, get_project_features for feature
+  queries, get_project_blockers for issues or risks, get_project_activity for
+  updates/history, and search_project_knowledge for project documentation
+- Never invent a project_id; an optional ID is only a server-validated hint
 - Independent project reads may be selected together so the tool runner can fan
   them out before the final answer is synthesized
 - For ambiguous follow-up questions, prefer selecting tools over chitchat

@@ -1,6 +1,4 @@
-"""Registration, authorization, and retrieval tests for Phase 6 tools."""
-
-from datetime import UTC, datetime
+"""Registration, authorization, and retrieval tests for project tools."""
 
 import pytest
 from rag.types import AccessFilter, SearchResponse
@@ -12,16 +10,15 @@ from agent.types import ProjectResolution
 from service.project_tools import (
     ProjectToolValidationError,
     resolve_project_for_actor,
-    validate_history_limit,
     validate_project_reference,
     validate_top_k,
 )
 
 PROJECT_TOOL_NAMES = {
-    "resolve_project",
-    "get_project_status",
-    "get_project_history",
-    "get_project_metrics",
+    "get_project_overview",
+    "get_project_features",
+    "get_project_blockers",
+    "get_project_activity",
     "search_project_knowledge",
 }
 
@@ -56,14 +53,10 @@ def test_project_tool_schemas_accept_optional_id():
 
 def test_validation_bounds():
     assert validate_project_reference(" Payments ") == "Payments"
-    assert validate_history_limit(1) == 1
-    assert validate_history_limit(100) == 100
     assert validate_top_k(10) == 10
 
     with pytest.raises(ProjectToolValidationError):
         validate_project_reference(" ")
-    with pytest.raises(ProjectToolValidationError):
-        validate_history_limit(101)
     with pytest.raises(ProjectToolValidationError):
         validate_top_k(0)
 
@@ -171,18 +164,23 @@ async def test_project_knowledge_adds_project_context_and_preserves_filter(monke
 
 @pytest.mark.asyncio
 async def test_registered_tools_return_typed_context_error_without_request_context():
-    resolution = await project_tools.resolve_project.ainvoke({"project_reference": "Payments"})
-    assert isinstance(resolution, ProjectResolution)
-    assert resolution.status == "forbidden"
+    for name in (
+        "get_project_overview",
+        "get_project_features",
+        "get_project_blockers",
+        "get_project_activity",
+    ):
+        result = await getattr(project_tools, name).ainvoke({"project_reference": "Payments"})
+        assert isinstance(result.resolution, ProjectResolution)
+        assert result.resolution.status == "forbidden"
 
-    history = await project_tools.get_project_history.ainvoke(
-        {"project_reference": "Payments", "since": datetime.now(UTC).isoformat()}
-    )
-    assert history.resolution.status == "forbidden"
 
-
-def test_project_tools_are_active_in_phase_6():
+def test_project_tools_are_active_in_registry():
     from agent.tools.registry import get_tool_schemas_for_classifier, get_tools_by_name
 
-    assert [tool.name for tool in get_tools_by_name(["resolve_project"])] == ["resolve_project"]
-    assert "resolve_project" in get_tool_schemas_for_classifier()
+    assert [tool.name for tool in get_tools_by_name(["get_project_overview"])] == [
+        "get_project_overview"
+    ]
+    schemas = get_tool_schemas_for_classifier()
+    assert all(name in schemas for name in PROJECT_TOOL_NAMES)
+    assert "resolve_project" not in schemas
