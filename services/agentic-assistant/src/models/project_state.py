@@ -41,6 +41,7 @@ class ProjectFeature(BaseModel):
     id: str
     project_id: str
     name: str
+    description: str | None = None
     status: FeatureStatus
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -85,7 +86,7 @@ class ProjectContext(BaseModel):
     scope: dict[str, str]
 
 
-_FEATURE_COLUMNS = "id, project_id, name, status, created_at, updated_at"
+_FEATURE_COLUMNS = "id, project_id, name, description, status, created_at, updated_at"
 _BLOCKER_COLUMNS = "id, project_id, title, description, severity, status, created_at, resolved_at"
 _UPDATE_COLUMNS = (
     "id, project_id, submitted_by, summary, completion_percentage, blocker_ids, created_at"
@@ -101,9 +102,10 @@ def _feature(row: tuple[Any, ...]) -> ProjectFeature:
         id=row[0],
         project_id=row[1],
         name=row[2],
-        status=FeatureStatus(row[3]),
-        created_at=row[4],
-        updated_at=row[5],
+        description=row[3],
+        status=FeatureStatus(row[4]),
+        created_at=row[5],
+        updated_at=row[6],
     )
 
 
@@ -168,13 +170,15 @@ async def get_latest_project_update_async(
 
 
 async def list_project_updates_async(
-    connection: Any, *, project_id: str, limit: int = 50
+    connection: Any, *, project_id: str, since: datetime | None = None, limit: int = 50
 ) -> list[DailyProjectUpdate]:
     bounded_limit = max(1, min(limit, 100))
+    since_clause = " AND created_at >= %s" if since is not None else ""
+    params: tuple[Any, ...] = (project_id, since) if since is not None else (project_id,)
     cursor = await connection.execute(
         f"SELECT {_UPDATE_COLUMNS} FROM assistant_daily_project_updates "
-        "WHERE project_id = %s ORDER BY created_at DESC LIMIT %s",
-        (project_id, bounded_limit),
+        f"WHERE project_id = %s{since_clause} ORDER BY created_at DESC LIMIT %s",
+        (*params, bounded_limit),
     )
     return [_update(row) for row in await cursor.fetchall()]
 

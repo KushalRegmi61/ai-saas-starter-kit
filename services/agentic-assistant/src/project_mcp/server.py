@@ -7,6 +7,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.datastructures import URLPath
+from starlette.requests import ClientDisconnect
 from starlette.routing import BaseRoute, Match
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -18,11 +19,13 @@ def create_mcp_server(pool_provider: Any) -> MCPServer:
     server = MCPServer(
         name="project-status",
         title="Project Status MCP",
-        description="Project-scoped status and daily-update tools.",
+        description="Minimal project-scoped status, update, feature, and blocker tools.",
         instructions=(
-            "The three read tools are safe to call for project context. "
-            "Before calling either write tool, show the proposed changes and "
-            "obtain explicit confirmation from the tech lead in the conversation."
+            "The bearer credential already defines the project scope. Use the context and "
+            "updates tools for reads. Refer to features and blockers by natural language; "
+            "never invent IDs, and ask for clarification when a reference is ambiguous. "
+            "Before calling any write action, show the proposed change and obtain explicit "
+            "confirmation from the tech lead in the conversation."
         ),
     )
     register_tools(server, pool_provider)
@@ -61,7 +64,13 @@ class McpRoute(BaseRoute):
         raise NoReverseMatch(name)
 
     async def handle(self, scope: Scope, receive: Receive, send: Send) -> None:
-        await self.app(scope, receive, send)
+        try:
+            await self.app(scope, receive, send)
+        except ClientDisconnect:
+            # Benign: browser/MCP client cancelled the request (e.g. closed
+            # the tab or timed out waiting). Swallow so uvicorn does not log
+            # an ASGI traceback for a client-side cancel.
+            return
 
 
 class NoReverseMatch(LookupError):

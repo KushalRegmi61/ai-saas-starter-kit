@@ -14,6 +14,7 @@ async def ensure_project_state_tables_async(connection: Any) -> None:
             id TEXT PRIMARY KEY,
             project_id TEXT NOT NULL REFERENCES assistant_projects(id) ON DELETE CASCADE,
             name TEXT NOT NULL,
+            description TEXT,
             status TEXT NOT NULL DEFAULT 'DEV'
                 CHECK (status IN ('DEV', 'QA', 'UAT', 'PROD', 'BUG', 'BLOCKED')),
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -61,6 +62,9 @@ async def ensure_project_state_tables_async(connection: Any) -> None:
             changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )
         """
+    )
+    await connection.execute(
+        "ALTER TABLE assistant_project_features ADD COLUMN IF NOT EXISTS description TEXT"
     )
     await connection.execute(
         "CREATE INDEX IF NOT EXISTS assistant_project_features_project_idx "

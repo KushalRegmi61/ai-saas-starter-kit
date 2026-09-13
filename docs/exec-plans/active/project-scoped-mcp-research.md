@@ -290,9 +290,9 @@ context:
 | Tool | Read/write | Purpose |
 |---|---|---|
 | `get_project_context` | Read | Project summary, status, completion, feature counts, open blockers, latest update |
-| `get_project_features` | Read | Features and current statuses |
-| `get_previous_update` | Read | Latest confirmed daily update |
-| `update_feature_status` | Write | Move one feature to a validated status and append history |
+| `get_project_updates` | Read | Bounded daily updates since an optional date/time |
+| `manage_project_feature` | Write | Explicitly create a feature or update a feature status by natural-language reference |
+| `manage_project_blocker` | Write | Explicitly create or resolve a blocker by natural-language reference |
 | `submit_daily_update` | Write | Persist a confirmed narrative/completion update and blocker references |
 
 `get_project_context` should be the canonical first call. It should execute a
@@ -336,10 +336,11 @@ The preferred interface is:
 
 ```text
 Claude Code: get_project_context()
-Claude Code: get_project_features()
+Claude Code: get_project_updates(since=...)
 Claude Code: proposes changes in chat
 Lead: reviews and confirms
-Claude Code: update_feature_status(...)
+Claude Code: manage_project_feature(action="update_status", ...)
+Claude Code: manage_project_blocker(action="resolve", ...)
 Claude Code: submit_daily_update(...)
 ```
 
@@ -347,7 +348,7 @@ The server validates:
 
 - feature belongs to the bound project;
 - status is in the allowed enum;
-- blocker IDs belong to the bound project;
+- natural-language feature and blocker references resolve only inside the bound project;
 - completion is an integer from 0 to 100;
 - summary length is bounded;
 - updates are idempotent where practical;
@@ -626,6 +627,25 @@ explicit project reference takes precedence over recent conversation context.
 No project IDs, claims, database handles, token material, or internal
 authorization details are exposed to the model or final response.
 
+### Phase 7: minimal natural-language MCP project state
+
+Keep the mounted MCP surface to exactly five tools: `get_project_context`,
+`get_project_updates`, `manage_project_feature`, `manage_project_blocker`, and
+`submit_daily_update`. The MCP credential remains the sole project selector;
+cross-project discovery stays in the Phase 6 assistant workflow.
+
+Feature and blocker management uses bounded deterministic matching against
+names, titles, and descriptions. Exact matches win, while unresolved and
+ambiguous references return safe candidates rather than guessing. Feature
+creation is explicit and supports an optional description. Historical updates
+accept bounded date/time and limit parameters for requests such as “the last
+four days”.
+
+All mutations remain lead-only, require explicit confirmation in the agent
+conversation, execute transactionally, and write project-scoped audit events.
+No separate search, feature-read, previous-update, generic SQL, or
+cross-project MCP tools are added.
+
 ## Testing and verification
 
 ### Unit and service tests
@@ -737,13 +757,14 @@ metadata, lead/admin platform APIs, one-time secret responses, ownership
 invalidation, and project-dashboard controls.
 
 Phase 3 adds the in-process Streamable HTTP MCP server at `/mcp`. The server
-revalidates the Phase 2 bearer token on every HTTP request, binds a
-request-scoped `ProjectMcpContext`, and exposes exactly five tools:
-`get_project_context`, `get_project_features`, `get_previous_update`,
-`update_feature_status`, and `submit_daily_update`. Project features,
-blockers, daily updates, and feature history are persisted in normalized
-Postgres tables. Write tools require explicit lead confirmation in the coding
-agent conversation and remain validated and audited server-side.
+revalidates the Phase 2 bearer token on every HTTP request and binds a
+request-scoped `ProjectMcpContext`. Phase 7 refines the surface to exactly
+five minimal tools: `get_project_context`, `get_project_updates`,
+`manage_project_feature`, `manage_project_blocker`, and
+`submit_daily_update`. Project features, blockers, daily updates, and feature
+history are persisted in normalized Postgres tables. Write tools require
+explicit lead confirmation in the coding-agent conversation and remain
+validated and audited server-side.
 
 Phase 5 registers five read-only project-agent tool contracts with typed
 project references, optional validated IDs, bounded parameters, and no write

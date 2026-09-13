@@ -46,7 +46,7 @@ async def test_project_state_schema_is_idempotent():
     connection = SchemaConnection()
     await project_state.ensure_project_state_tables_async(connection)
     await project_state.ensure_project_state_tables_async(connection)
-    assert len(connection.calls) == 14
+    assert len(connection.calls) == 16
     assert "assistant_project_features" in connection.calls[0][0]
     assert "assistant_feature_status_history" in connection.calls[3][0]
 
