@@ -19,8 +19,8 @@
     "package_name": "ai-saas-api",
     "tasks": [
       ".venv/bin/ruff check services/api",
-      "cd services/api && ../../.venv/bin/python -m pytest",
-      "cd services/api && ../../.venv/bin/python -m pytest tests/test_structure.py -v"
+      ".venv/bin/python -m pytest services/api",
+      ".venv/bin/python -m pytest services/api/tests/test_structure.py -v"
     ]
   },
   "services/worker": {
@@ -28,7 +28,7 @@
     "package_name": "ai-saas-worker",
     "tasks": [
       ".venv/bin/ruff check services/worker",
-      "cd services/worker && ../../.venv/bin/python -m pytest"
+      ".venv/bin/python -m pytest services/worker"
     ]
   },
   "services/agentic-assistant": {
@@ -36,7 +36,7 @@
     "package_name": "ai-saas-agentic-assistant",
     "tasks": [
       ".venv/bin/ruff check services/agentic-assistant",
-      "cd services/agentic-assistant && ../../.venv/bin/python -m pytest"
+      ".venv/bin/python -m pytest services/agentic-assistant"
     ],
     "docker": true
   },
@@ -45,7 +45,7 @@
     "package_name": "ai-saas-shared",
     "tasks": [
       ".venv/bin/ruff check services/shared",
-      "cd services/shared && ../../.venv/bin/python -m pytest"
+      ".venv/bin/python -m pytest services/shared"
     ]
   },
   "libs/auth": {
@@ -53,7 +53,7 @@
     "package_name": "ai-saas-auth",
     "tasks": [
       ".venv/bin/ruff check libs/auth",
-      "cd libs/auth && ../../.venv/bin/python -m pytest"
+      ".venv/bin/python -m pytest libs/auth"
     ]
   },
   "libs/rag": {
@@ -61,7 +61,7 @@
     "package_name": "ai-saas-rag",
     "tasks": [
       ".venv/bin/ruff check libs/rag",
-      "cd libs/rag && ../../.venv/bin/python -m pytest"
+      ".venv/bin/python -m pytest libs/rag"
     ]
   }
 }

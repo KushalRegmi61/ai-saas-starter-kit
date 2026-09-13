@@ -115,3 +115,11 @@ def test_output_has_stable_matrix_fields(monkeypatch):
         "has_docker",
     }
     assert result["python_projects"][0]["package_name"] == "ai-saas-agentic-assistant"
+
+
+def test_python_tasks_are_safe_to_run_from_repository_root(monkeypatch):
+    result = run_for(monkeypatch, ["services/api/app/runtime/health.py"])
+
+    api = next(project for project in result["python_projects"] if project["path"] == "services/api")
+    assert "cd " not in api["run"]
+    assert "pytest services/api" in api["run"]
