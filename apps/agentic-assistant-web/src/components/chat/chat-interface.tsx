@@ -7,10 +7,11 @@ import {
   User,
   Loader2,
   Sparkles,
-  Sliders,
   PlusCircle,
   Wifi,
   WifiOff,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { useAssistantChat } from "../../lib/use-assistant-chat";
 import { useChatHistory } from "../../lib/use-chat-history";
@@ -42,8 +43,9 @@ function deriveStep(msg: {
 
 export function ChatInterface({ token }: ChatInterfaceProps) {
   const [prompt, setPrompt] = useState("");
-  const [topK, setTopK] = useState(4);
-  const [showSettings, setShowSettings] = useState(false);
+  // Retrieval is fixed to hybrid top-4 (matches the backend default); the
+  // former header toggle for these settings was removed as UI clutter.
+  const topK = 4;
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -58,6 +60,7 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
   } = useAssistantChat(token);
   const [selectingId, setSelectingId] = useState<string | null>(null);
   const [selectError, setSelectError] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(true);
   const {
     summaries,
     isLoading: historyLoading,
@@ -129,6 +132,7 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
         isError={historyError}
         error={historyErrorText}
         selectingId={selectingId}
+        open={historyOpen}
         onRetry={refetchHistory}
         onSelect={handleSelectChat}
       />
@@ -136,6 +140,19 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
       {/* ── Header ─────────────────────────────────────────────── */}
       <header className="px-5 py-3.5 border-b border-slate-800/80 bg-slate-900/70 backdrop-blur-md flex items-center justify-between shrink-0 gap-4">
         <div className="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            onClick={() => setHistoryOpen((v) => !v)}
+            title={historyOpen ? "Hide past chats" : "Show past chats"}
+            aria-label={historyOpen ? "Hide past chats" : "Show past chats"}
+            className="hidden md:flex p-2 rounded-lg border border-slate-800 hover:bg-slate-800/80 text-slate-400 hover:text-slate-200 transition-all shrink-0"
+          >
+            {historyOpen ? (
+              <PanelLeftClose className="w-4 h-4" />
+            ) : (
+              <PanelLeftOpen className="w-4 h-4" />
+            )}
+          </button>
           {/* Logo */}
           <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/25">
             <Bot className="w-5 h-5 text-white" />
@@ -164,19 +181,6 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => setShowSettings(!showSettings)}
-            className={`p-2 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 ${
-              showSettings
-                ? "bg-indigo-900/50 border-indigo-600/60 text-indigo-200"
-                : "border-slate-800 hover:bg-slate-800/80 text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Sliders className="w-4 h-4" />
-            <span className="hidden sm:inline">Retrieval</span>
-          </button>
-
-          <button
-            type="button"
             onClick={handleNewChat}
             className="p-2 rounded-lg border border-slate-800 hover:bg-slate-800/80 text-slate-400 hover:text-slate-200 text-xs font-medium transition-all flex items-center gap-1.5"
           >
@@ -185,38 +189,6 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
           </button>
         </div>
       </header>
-
-      {/* ── Settings bar ──────────────────────────────────────── */}
-      <div
-        className={`overflow-hidden transition-all duration-300 ${
-          showSettings ? "max-h-20 opacity-100" : "max-h-0 opacity-0"
-        }`}
-      >
-        <div className="px-5 py-3 bg-slate-900/80 border-b border-slate-800/60 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-300">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400 font-medium">Strategy:</span>
-              <span className="px-2 py-1.5 text-xs text-slate-200">
-                Hybrid (Dense + Sparse)
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400 font-medium">Top-K:</span>
-              <input
-                type="number"
-                min={1}
-                max={10}
-                value={topK}
-                onChange={(e) => setTopK(Number(e.target.value))}
-                className="w-14 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 text-center focus:outline-none focus:border-indigo-500 transition-colors"
-              />
-            </div>
-          </div>
-          <span className="text-[10px] text-slate-600">
-            RBAC + Authz metadata applied automatically
-          </span>
-        </div>
-      </div>
 
       {/* ── Reopen failure (past-chat click) ─────────────────── */}
       {selectError && (
