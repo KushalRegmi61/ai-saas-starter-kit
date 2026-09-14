@@ -18,6 +18,10 @@ interface ProjectTokenPanelProps {
   token: string | null;
 }
 
+const PROJECT_MCP_URL =
+  process.env.NEXT_PUBLIC_PROJECT_MCP_URL ||
+  "https://agentic-assistant-sha-42efdfb.onrender.com/mcp";
+
 function formatDate(value: string | null): string {
   return value ? new Date(value).toLocaleString() : "Never";
 }
@@ -101,11 +105,11 @@ export function ProjectTokenPanel({ projectId, role, token }: ProjectTokenPanelP
           <pre className="overflow-x-auto rounded bg-slate-950 p-3 text-[10px] text-slate-300">{`export PROJECT_MCP_TOKEN="paste-token-here"
 
 # Claude Code
-claude mcp add --transport http project-status https://assistant.example.com/mcp --header "Authorization: Bearer $PROJECT_MCP_TOKEN"
+claude mcp add --transport http project-status ${PROJECT_MCP_URL} --header "Authorization: Bearer $PROJECT_MCP_TOKEN"
 
 # Codex
 [mcp_servers.project_status]
-url = "https://assistant.example.com/mcp"
+url = "${PROJECT_MCP_URL}"
 bearer_token_env_var = "PROJECT_MCP_TOKEN"
 
 # OpenCode
@@ -113,7 +117,7 @@ bearer_token_env_var = "PROJECT_MCP_TOKEN"
   "mcp": {
     "project-status": {
       "type": "remote",
-      "url": "https://assistant.example.com/mcp",
+      "url": "${PROJECT_MCP_URL}",
       "oauth": false,
       "headers": { "Authorization": "Bearer {env:PROJECT_MCP_TOKEN}" }
     }

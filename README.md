@@ -151,6 +151,8 @@ OPENAI_API_KEY
 
 Set `NEXT_PUBLIC_ASSISTANT_API_URL` in `apps/agentic-assistant-web/.env.local` when the assistant API is not using its default local origin. The first admin is seeded only when the bootstrap credentials are supplied; existing users are not overwritten.
 
+Set `NEXT_PUBLIC_PROJECT_MCP_URL` there as well to change the MCP endpoint shown in project coding-agent setup instructions. Its default is `https://agentic-assistant-sha-42efdfb.onrender.com/mcp`.
+
 Assistant auth, role policy, project access, memory, WebSocket protocol, and ingestion behavior are documented in [docs/features/assistant-auth.md](docs/features/assistant-auth.md) and [docs/features/retrieval.md](docs/features/retrieval.md).
 
 ### Run the applications
