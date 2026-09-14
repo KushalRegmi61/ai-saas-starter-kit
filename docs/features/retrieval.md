@@ -28,6 +28,7 @@ Single-tool RAG retrieval over Qdrant vectors + Neon registry/cache.
 | Server → client | `done` | `{type, request_id, conversation_id, answer, sources, grounded, rewritten_question, workflow_steps}` |
 | Server → client | `error` | `{type, request_id?, code, text}` — `invalid_message`, `request_in_progress`, `invalid_request`, `not_found`, `forbidden`, `server_error` |
 | HTTP | `GET /conversations/{id}` | Owned history as `[{turn_index, question, answer, sources: [], created_at}]`; 404/403 on missing/forbidden |
+| HTTP | `GET /conversations` | Owned past-chats list, newest-first: `[{conversation_id, updated_at, turn_count, preview}]`; JWT required (401); `limit` 1–100, default 50 |
 | HTTP | `GET /sources` | Admin/service registry listing (`tenant` query optional, absent = all tenants) as `[{tenant, source, department?, access_level?, chunks_count, indexed_at?, status}]`; feeds the Admin Console indexed-documents table |
 
 The assistant chat path uses async psycopg/Qdrant/OpenAI adapters; semantic and
@@ -48,9 +49,16 @@ Caller passes `AccessFilter(departments, max_access_level)`; rag only enforces. 
 
 `QDRANT_URL/QDRANT_API_KEY/QDRANT_COLLECTION`, `AGENTIC_ASSISTANT_DATABASE_URL` (Neon + pgvector), `OPENAI_API_KEY/BASE_URL`, `AGENTIC_ASSISTANT_JWT_SECRET`, and the agentic-assistant memory/WebSocket settings. Unconfigured → `503`. The chat socket requires a short-lived assistant WebSocket ticket and stores conversation turns in the same Neon database.
 
+## Past chats (Option A: derived preview, no migration)
+
+- List derives each row from storage on every call: `assistant_conversations` filtered by `owner_subject`, ordered `updated_at DESC`, plus per-chat assistant-row count (`turn_count`) and first `user` message cut to 120 chars (`preview`). No title column, no backfill.
+- Model: `models/conversations.py::async_list_conversations` (+ sync `list_conversations`); boundary type `agent/types.py::ConversationSummary`; route `api/chat.py::list_conversations` (`GET /conversations`, declared before `/{id}` so the static path wins).
+- Web: chat home side panel (`components/chat/chat-history-panel.tsx`, `lib/use-chat-history.ts`, `lib/api.ts::getConversationSummaries`). Row click reuses `GET /conversations/{id}` + `loadHistory()` — the `/ask` socket then continues on the loaded id. States: loading skeleton, error + retry, empty "No chats yet", reopen failure banner. List refreshes whenever `conversation_id` changes.
+- Stored-title variant (Option B) stays deferred: only if many/long histories make the per-list preview reads measurably slow.
+
 ## Tests
 
-`libs/rag/tests/` (router, RRF, formatting, RBAC, cache keys, tenant) + `libs/auth/tests/test_mapping.py` (role→filter). Tenant coverage lives in `libs/rag/tests/test_tenant.py`.
+`libs/rag/tests/` (router, RRF, formatting, RBAC, cache keys, tenant) + `libs/auth/tests/test_mapping.py` (role→filter). Tenant coverage lives in `libs/rag/tests/test_tenant.py`. Chat list: `services/agentic-assistant/tests/test_conversation_list.py` (newest-first, owner scoping, preview cut, route auth/shape); history regression: `tests/test_chat_api.py` + `tests/test_conversations.py`.
 
 ## Multi-service use (tenant + portable filter)
 

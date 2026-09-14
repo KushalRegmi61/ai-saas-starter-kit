@@ -61,6 +61,15 @@ class ConversationTurn(BaseModel):
     created_at: str | None = None
 
 
+class ConversationSummary(BaseModel):
+    """One row of the past-chats list. Preview derives from the first message."""
+
+    conversation_id: str
+    updated_at: str | None = None
+    turn_count: int = Field(default=0, ge=0)
+    preview: str = ""
+
+
 ProjectResolutionStatus = Literal[
     "resolved", "unresolved", "not_found", "ambiguous", "forbidden", "validation_error"
 ]

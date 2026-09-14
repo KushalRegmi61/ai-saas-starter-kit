@@ -19,6 +19,7 @@ import type {
   WebSocketTicketResponse,
   ProjectLeadPayload,
   UpdateProjectPayload,
+  ConversationSummary,
   ConversationTurn,
   StreamEvent,
 } from "../types";
@@ -298,6 +299,16 @@ export async function getConversationHistory(
 ): Promise<ConversationTurn[]> {
   return fetchAssistant<ConversationTurn[]>(
     `/conversations/${conversationId}`,
+    { method: "GET" },
+    token
+  );
+}
+
+export async function getConversationSummaries(
+  token: string
+): Promise<ConversationSummary[]> {
+  return fetchAssistant<ConversationSummary[]>(
+    "/conversations",
     { method: "GET" },
     token
   );

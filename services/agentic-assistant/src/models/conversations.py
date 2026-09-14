@@ -384,6 +384,118 @@ async def async_update_summary(
     )
 
 
+PREVIEW_MAX_LEN = 120
+
+
+def _preview_of(content: str | None) -> str:
+    if not content:
+        return ""
+    return " ".join(str(content).split())[:PREVIEW_MAX_LEN]
+
+
+def _isoformat_ts(value: Any) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def list_conversations(
+    connection: Any, owner_subject: str, *, limit: int = 50, offset: int = 0
+) -> list[dict]:
+    """Owner-scoped chat summaries, newest first (Option A: derived preview)."""
+    logger.info("models: list conversations owner=%s limit=%d", owner_subject, limit)
+    rows = connection.execute(
+        """
+        SELECT conversation_id, updated_at
+        FROM assistant_conversations
+        WHERE owner_subject = %s
+        ORDER BY updated_at DESC
+        LIMIT %s OFFSET %s
+        """,
+        (owner_subject, limit, offset),
+    ).fetchall()
+    summaries: list[dict] = []
+    for conversation_id, updated_at in rows:
+        count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM assistant_conversation_turns
+            WHERE conversation_id = %s AND role = 'assistant'
+            """,
+            (conversation_id,),
+        ).fetchone()
+        first = connection.execute(
+            """
+            SELECT content
+            FROM assistant_conversation_turns
+            WHERE conversation_id = %s AND role = 'user'
+            ORDER BY turn_index ASC
+            LIMIT 1
+            """,
+            (conversation_id,),
+        ).fetchone()
+        summaries.append(
+            {
+                "conversation_id": conversation_id,
+                "updated_at": _isoformat_ts(updated_at),
+                "turn_count": int(count[0]) if count else 0,
+                "preview": _preview_of(first[0] if first else None),
+            }
+        )
+    return summaries
+
+
+async def async_list_conversations(
+    connection: Any, owner_subject: str, *, limit: int = 50, offset: int = 0
+) -> list[dict]:
+    """Async owner-scoped chat summaries, newest first (Option A)."""
+    logger.info("models: list conversations owner=%s limit=%d", owner_subject, limit)
+    cursor = await connection.execute(
+        """
+        SELECT conversation_id, updated_at
+        FROM assistant_conversations
+        WHERE owner_subject = %s
+        ORDER BY updated_at DESC
+        LIMIT %s OFFSET %s
+        """,
+        (owner_subject, limit, offset),
+    )
+    rows = await cursor.fetchall()
+    summaries: list[dict] = []
+    for conversation_id, updated_at in rows:
+        cursor = await connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM assistant_conversation_turns
+            WHERE conversation_id = %s AND role = 'assistant'
+            """,
+            (conversation_id,),
+        )
+        count = await cursor.fetchone()
+        cursor = await connection.execute(
+            """
+            SELECT content
+            FROM assistant_conversation_turns
+            WHERE conversation_id = %s AND role = 'user'
+            ORDER BY turn_index ASC
+            LIMIT 1
+            """,
+            (conversation_id,),
+        )
+        first = await cursor.fetchone()
+        summaries.append(
+            {
+                "conversation_id": conversation_id,
+                "updated_at": _isoformat_ts(updated_at),
+                "turn_count": int(count[0]) if count else 0,
+                "preview": _preview_of(first[0] if first else None),
+            }
+        )
+    return summaries
+
+
 @asynccontextmanager
 async def async_conversation_lock(connection: Any, conversation_id: str):
     """Serialize a conversation without blocking the event loop."""

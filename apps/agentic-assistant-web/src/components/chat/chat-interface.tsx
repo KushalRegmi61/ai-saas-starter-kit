@@ -13,6 +13,9 @@ import {
   WifiOff,
 } from "lucide-react";
 import { useAssistantChat } from "../../lib/use-assistant-chat";
+import { useChatHistory } from "../../lib/use-chat-history";
+import { getConversationHistory } from "../../lib/api";
+import { ChatHistoryPanel } from "./chat-history-panel";
 import { RagEvidencePanel } from "./rag-evidence-panel";
 import { ProjectEvidencePanel } from "./project-evidence-panel";
 import { MarkdownMessage } from "./markdown-message";
@@ -44,13 +47,63 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { messages, conversationId, isConnected, isBusy, sendAsk, resetChat } =
-    useAssistantChat(token);
+  const {
+    messages,
+    conversationId,
+    isConnected,
+    isBusy,
+    sendAsk,
+    loadHistory,
+    resetChat,
+  } = useAssistantChat(token);
+  const [selectingId, setSelectingId] = useState<string | null>(null);
+  const [selectError, setSelectError] = useState<string | null>(null);
+  const {
+    summaries,
+    isLoading: historyLoading,
+    isError: historyError,
+    error: historyErrorText,
+    refetch: refetchHistory,
+  } = useChatHistory(token);
+  const prevConversationId = useRef<string | null>(null);
+
+  // A finished ask mints (or reuses) the conversation id — refresh the
+  // past-chats list so the new/updated chat surfaces newest-first.
+  useEffect(() => {
+    if (conversationId && conversationId !== prevConversationId.current) {
+      prevConversationId.current = conversationId;
+      refetchHistory();
+    }
+  }, [conversationId, refetchHistory]);
 
   // Auto-scroll to bottom whenever messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Reopen a past chat through the existing single-chat API + loader: no
+  // duplicate history logic, the socket keeps using the loaded id afterwards.
+  const handleSelectChat = async (id: string) => {
+    if (!token || isBusy || selectingId || id === conversationId) return;
+    setSelectingId(id);
+    setSelectError(null);
+    try {
+      const turns = await getConversationHistory(id, token);
+      loadHistory(turns, id);
+    } catch (err) {
+      setSelectError(
+        err instanceof Error ? err.message : "Couldn't open that chat."
+      );
+    } finally {
+      setSelectingId(null);
+    }
+  };
+
+  const handleNewChat = () => {
+    resetChat();
+    setSelectError(null);
+    prevConversationId.current = null;
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,7 +121,18 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-950 text-slate-100 font-sans">
+    <div className="flex h-full bg-slate-950 text-slate-100 font-sans">
+      <ChatHistoryPanel
+        summaries={summaries}
+        activeId={conversationId}
+        isLoading={historyLoading}
+        isError={historyError}
+        error={historyErrorText}
+        selectingId={selectingId}
+        onRetry={refetchHistory}
+        onSelect={handleSelectChat}
+      />
+      <div className="flex flex-col flex-1 min-w-0 h-full">
       {/* ── Header ─────────────────────────────────────────────── */}
       <header className="px-5 py-3.5 border-b border-slate-800/80 bg-slate-900/70 backdrop-blur-md flex items-center justify-between shrink-0 gap-4">
         <div className="flex items-center gap-3 min-w-0">
@@ -113,7 +177,7 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
 
           <button
             type="button"
-            onClick={resetChat}
+            onClick={handleNewChat}
             className="p-2 rounded-lg border border-slate-800 hover:bg-slate-800/80 text-slate-400 hover:text-slate-200 text-xs font-medium transition-all flex items-center gap-1.5"
           >
             <PlusCircle className="w-4 h-4" />
@@ -153,6 +217,20 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
           </span>
         </div>
       </div>
+
+      {/* ── Reopen failure (past-chat click) ─────────────────── */}
+      {selectError && (
+        <div className="px-5 py-2 bg-rose-950/40 border-b border-rose-800/30 text-xs text-rose-300 shrink-0 flex items-center gap-2">
+          <span>⚠ {selectError}</span>
+          <button
+            type="button"
+            onClick={() => setSelectError(null)}
+            className="ml-auto underline underline-offset-2 hover:text-rose-100"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* ── Message list ──────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto chat-scroll px-4 sm:px-6 py-6 space-y-6">
@@ -340,6 +418,7 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
             "Waiting for connection…"
           )}
         </p>
+      </div>
       </div>
     </div>
   );

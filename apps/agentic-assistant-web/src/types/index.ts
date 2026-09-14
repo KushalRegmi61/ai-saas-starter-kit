@@ -230,6 +230,14 @@ export interface ConversationTurn {
   created_at: string;
 }
 
+/** One row of GET /conversations: id, recency, size, derived preview. */
+export interface ConversationSummary {
+  conversation_id: string;
+  updated_at: string | null;
+  turn_count: number;
+  preview: string;
+}
+
 export interface CreateUserPayload {
   email: string;
   password: string;

@@ -9,19 +9,20 @@ from typing import Any
 
 from auth.tokens import InvalidToken, decode_assistant_ws_ticket
 from auth.types import AssistantClaims
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel, Field, ValidationError
 from rag.types import SearchMode
 
 from agent.authz import require_jwt_user
 from agent.config import get_agent_settings
-from agent.types import AskRequest, ConversationTurn
+from agent.types import AskRequest, ConversationSummary, ConversationTurn
 from api.auth import get_user_pool
 from models.conversations import (
     ConversationForbidden,
     ConversationNotFound,
     async_get_full_history,
+    async_list_conversations,
 )
 from service.chat import stream_chat
 
@@ -228,6 +229,18 @@ async def _send_json(
 ) -> None:
     async with send_lock:
         await websocket.send_json(payload)
+
+
+@router.get("/conversations", response_model=list[ConversationSummary])
+async def list_conversations(
+    pool: AsyncConnectionPool = Depends(get_user_pool),
+    claims: AssistantClaims = Depends(require_jwt_user),
+    limit: int = Query(default=50, ge=1, le=100),
+) -> list[ConversationSummary]:
+    logger.info("chat: list conversations subject=%s limit=%d", claims.subject, limit)
+    async with pool.connection() as connection:
+        rows = await async_list_conversations(connection, claims.subject, limit=limit)
+    return [ConversationSummary(**row) for row in rows]
 
 
 @router.get("/conversations/{conversation_id}", response_model=list[ConversationTurn])
