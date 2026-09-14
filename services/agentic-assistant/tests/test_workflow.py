@@ -188,6 +188,17 @@ def test_project_context_requires_resolved_project_name_in_answer():
     assert "mention that project in the opening sentence" in context
 
 
+def test_project_context_requires_human_friendly_summarization():
+    context = _assemble_context(
+        _state(
+            resolved_project={"project_id": "p-1", "name": "Workalaya"},
+            selected_tools=["get_project_blockers"],
+        )
+    )
+    assert "plain, human-friendly language" in context
+    assert "do not copy raw tool JSON" in context
+
+
 @pytest.mark.asyncio
 async def test_tool_runner_promotes_project_knowledge_to_grounding_state():
     result = _result(text="The assistant ships weekly.", source="workalay.md")
