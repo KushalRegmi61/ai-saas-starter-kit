@@ -160,7 +160,10 @@ async def test_actor_scoped_reads_use_project_access_service(monkeypatch):
 
     access_module = ModuleType("service.projects")
     access_module.get_project_for_actor = authorize
+    import service
+
     monkeypatch.setitem(sys.modules, "service.projects", access_module)
+    monkeypatch.setattr(service, "projects", access_module, raising=False)
     async def list_features(*args, **kwargs):
         return []
 
