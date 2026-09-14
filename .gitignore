@@ -62,3 +62,5 @@ services/api/data/
 graphify-out/cost.json
 
 graphify-out/*
+
+.opencode/
