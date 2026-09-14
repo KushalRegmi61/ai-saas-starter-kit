@@ -56,3 +56,9 @@ services/api/data/
 
 # CodeNib indexer droppings (recreated on every index run)
 .codenib_install_cache
+
+# Graphify knowledge graph (committed so the team shares the map;
+# cost.json is local-only token accounting)
+graphify-out/cost.json
+
+graphify-out/*

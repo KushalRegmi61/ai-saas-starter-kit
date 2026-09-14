@@ -156,6 +156,12 @@ def changed_files(repo_root: Path, base: str, head: str) -> list[str]:
     return [line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()]
 
 
+def is_documentation_file(file_path: str) -> bool:
+    """Return whether a changed path is documentation-only CI input."""
+    path = Path(file_path)
+    return file_path.startswith("docs/") or path.suffix.lower() in {".md", ".mdx"}
+
+
 def reverse_dependents(projects: list[Project]) -> dict[str, set[str]]:
     by_name = {project.name: project.path for project in projects if project.name}
     reverse = {project.path: set() for project in projects}
@@ -207,11 +213,11 @@ def detect(repo_root: Path, base: str, head: str, metadata: dict[str, Any] | Non
     reasons: list[str] = ["initial history"] if run_all else []
 
     for file_path in files:
-        if file_path.startswith("docs/"):
-            continue
         if file_path.startswith((".github/", "scripts/ci/")):
             all_python = all_node = True
             reasons.append(f"{file_path} affects all projects")
+            continue
+        if is_documentation_file(file_path):
             continue
         if file_path in {"pyproject.toml", "uv.lock"}:
             all_python = True

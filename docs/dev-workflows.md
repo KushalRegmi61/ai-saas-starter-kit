@@ -72,7 +72,8 @@ Engineering workflows for this repo.
   uv workspace members and Python manifests plus pnpm workspace manifests, then
   expands changed projects to their transitive consumers for regression testing.
 - Unknown project mappings and ecosystem lockfile changes conservatively expand
-  to all relevant checks. Documentation-only changes run no project checks.
+  to all relevant checks. Documentation-only changes (`docs/**`, `*.md`, and
+  `*.mdx`, including the root `README.md`) run no project checks.
 - Agent Docker publishing is restricted to successful agent-impacting pushes on
   `main`; pull requests never publish images.
 - No secrets required — backend tests mock the B2 repo layer and `/health` tolerates a degraded connection. E2E is not in CI (it needs a running app + live B2).

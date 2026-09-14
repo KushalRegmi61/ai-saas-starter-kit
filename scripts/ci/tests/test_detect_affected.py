@@ -58,6 +58,27 @@ def test_documentation_change_runs_no_project(monkeypatch):
     assert result["has_node"] is False
 
 
+def test_root_readme_change_runs_no_project(monkeypatch):
+    result = run_for(monkeypatch, ["README.md"])
+
+    assert result["projects"] == []
+    assert result["has_python"] is False
+    assert result["has_node"] is False
+
+
+def test_documentation_change_does_not_hide_code_change(monkeypatch):
+    result = run_for(monkeypatch, ["README.md", "apps/web/src/app/page.tsx"])
+
+    assert project_paths(result) == {"apps/web"}
+
+
+def test_ci_metadata_markdown_still_runs_all_checks(monkeypatch):
+    result = run_for(monkeypatch, [".github/README.md"])
+
+    assert result["has_python"] is True
+    assert result["has_node"] is True
+
+
 def test_lockfiles_expand_only_their_ecosystem(monkeypatch):
     python_result = run_for(monkeypatch, ["uv.lock"])
     node_result = run_for(monkeypatch, ["pnpm-lock.yaml"])
