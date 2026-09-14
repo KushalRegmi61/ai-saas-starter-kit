@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 # Optional[] (not `| None`): langgraph only recognises this spelling for
 # runtime config injection (RunnableCallable KWARGS_CONFIG_KEYS).
@@ -57,6 +58,10 @@ Tool selection rules:
 - Use get_project_overview for overall state, get_project_features for feature
   queries, get_project_blockers for issues or risks, get_project_activity for
   updates/history, and search_project_knowledge for project documentation
+- For a project overview, progress, work, context, or daily-update question,
+  select search_project_knowledge together with the relevant structured tool.
+  Knowledge search supplies narrative context while structured tools supply
+  authoritative current state.
 - Never invent a project_id; an optional ID is only a server-validated hint
 - Independent project reads may be selected together so the tool runner can fan
   them out before the final answer is synthesized
@@ -85,7 +90,7 @@ async def classify_intent(
     )
 
     raw = await invoke_response(ctx, config=config)
-    parsed = _parse_response(raw)
+    parsed = _enforce_project_selection(state["question"], _parse_response(raw))
 
     logger.info(
         "node classify: done intent=%s tools=%s question=%r",
@@ -163,3 +168,54 @@ def _parse_response(raw: str) -> dict:
         tools = all_tools
 
     return {"intent": "needs_tools", "tools": tools}
+
+
+_PROJECT_SIGNALS = re.compile(
+    r"\b(project|feature|blocker|risk|daily update|progress|delivery|"
+    r"documentation|decision|context|workstream|work update|history)\b",
+    re.IGNORECASE,
+)
+_STRUCTURED_ONLY_SIGNALS = re.compile(
+    r"\b(status|completion|complete|percent|percentage|count|counts)\b",
+    re.IGNORECASE,
+)
+
+
+def _enforce_project_selection(question: str, parsed: dict) -> dict:
+    """Make project routing deterministic after the classifier responds."""
+    if not _PROJECT_SIGNALS.search(question):
+        return parsed
+
+    names = list(parsed.get("tools", []))
+    project_tools = {
+        "get_project_overview",
+        "get_project_features",
+        "get_project_blockers",
+        "get_project_activity",
+        "search_project_knowledge",
+    }
+    if not names or parsed.get("intent") == "chitchat":
+        names = ["get_project_overview"]
+
+    lowered = question.casefold()
+    if "blocker" in lowered or "risk" in lowered:
+        primary = "get_project_blockers"
+    elif "feature" in lowered:
+        primary = "get_project_features"
+    elif any(term in lowered for term in ("update", "history", "daily")):
+        primary = "get_project_activity"
+    else:
+        primary = "get_project_overview"
+
+    selected = [name for name in names if name not in project_tools]
+    if primary not in selected:
+        selected.append(primary)
+
+    pure_structured = bool(_STRUCTURED_ONLY_SIGNALS.search(question)) and not any(
+        term in lowered
+        for term in ("about", "context", "documentation", "decision", "work", "progress")
+    )
+    if not pure_structured and "search_project_knowledge" not in selected:
+        selected.append("search_project_knowledge")
+
+    return {"intent": "needs_tools", "tools": selected}

@@ -39,6 +39,7 @@ from agent.graph.nodes.classify import classify_intent
 from agent.graph.nodes.generate_final import generate_final
 from agent.graph.nodes.routing import route_after_agent, route_after_classify
 from agent.graph.state import AgentState, make_initial_state
+from agent.graph.tool_runner import force_project_search, make_tool_runner
 from agent.llm import _content_text
 from agent.tracing import get_langchain_callbacks, trace_span
 from agent.types import AskResponse
@@ -66,7 +67,8 @@ def get_agent_graph():
     graph.add_node("classify_intent", classify_intent)
     graph.add_node("chitchat_respond", chitchat_respond)
     graph.add_node("agent", agent_node)
-    graph.add_node("tools", tool_node)
+    graph.add_node("tools", make_tool_runner(tool_node))
+    graph.add_node("force_project_search", force_project_search)
     graph.add_node("generate_final", generate_final)
 
     graph.set_entry_point("classify_intent")
@@ -79,8 +81,13 @@ def get_agent_graph():
     graph.add_conditional_edges(
         "agent",
         route_after_agent,
-        {"tools": "tools", "generate": "generate_final"},
+        {
+            "tools": "tools",
+            "force_project_search": "force_project_search",
+            "generate": "generate_final",
+        },
     )
+    graph.add_edge("force_project_search", "tools")
     graph.add_edge("tools", "agent")
     graph.add_edge("generate_final", END)
 
@@ -213,6 +220,7 @@ async def stream_graph(
                 "type": "done",
                 "answer": "I was unable to complete the request.",
                 "sources": [],
+                "project_evidence": [],
                 "grounded": False,
                 "rewritten_question": None,
                 "workflow_steps": initial_state["workflow_steps"],
@@ -232,6 +240,12 @@ async def stream_graph(
             "type": "done",
             "answer": answer,
             "sources": final_output.get("sources", []),
+            "project_evidence": [
+                evidence.model_dump(mode="json")
+                if hasattr(evidence, "model_dump")
+                else evidence
+                for evidence in final_output.get("project_evidence", [])
+            ],
             "grounded": final_output.get("grounded", False),
             "rewritten_question": None,
             "workflow_steps": final_output.get("workflow_steps", []),

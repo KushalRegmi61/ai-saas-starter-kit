@@ -6,6 +6,7 @@ from typing import Annotated, Any
 from auth.types import AssistantClaims
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
+from pydantic import BaseModel
 from rag.types import AccessFilter
 
 from agent.tools.registry import ToolEntry, register
@@ -35,6 +36,11 @@ def _validation(message: str) -> ProjectResolution:
     return ProjectResolution(status="validation_error", message=message)
 
 
+def _tool_result(result: BaseModel) -> str:
+    """Return a stable JSON envelope for LangGraph ToolMessage content."""
+    return result.model_dump_json()
+
+
 def _context(
     claims: AssistantClaims | None, pool: Any
 ) -> tuple[AssistantClaims, Any] | ProjectResolution:
@@ -51,20 +57,21 @@ async def get_project_overview(
     project_id: str | None = None,
     claims: Annotated[AssistantClaims | None, InjectedState("claims")] = None,
     pool: Annotated[Any, InjectedState("pool")] = None,
-) -> ProjectOverviewResult:
+) -> str:
     """Read a project's summary, grouped feature state, metrics, and blocker count."""
     context = _context(claims, pool)
     if isinstance(context, ProjectResolution):
-        return ProjectOverviewResult(resolution=context)
+        return _tool_result(ProjectOverviewResult(resolution=context))
     try:
-        return await get_overview(
+        result = await get_overview(
             context[1],
             claims=context[0],
             project_reference=project_reference,
             project_id=project_id,
         )
+        return _tool_result(result)
     except ProjectToolValidationError as exc:
-        return ProjectOverviewResult(resolution=_validation(str(exc)))
+        return _tool_result(ProjectOverviewResult(resolution=_validation(str(exc))))
 
 
 @tool("get_project_features")
@@ -76,13 +83,13 @@ async def get_project_features(
     limit: int = 100,
     claims: Annotated[AssistantClaims | None, InjectedState("claims")] = None,
     pool: Annotated[Any, InjectedState("pool")] = None,
-) -> ProjectFeaturesResult:
+) -> str:
     """Query authorized project features by natural-language text and status."""
     context = _context(claims, pool)
     if isinstance(context, ProjectResolution):
-        return ProjectFeaturesResult(resolution=context)
+        return _tool_result(ProjectFeaturesResult(resolution=context))
     try:
-        return await get_features(
+        result = await get_features(
             context[1],
             claims=context[0],
             project_reference=project_reference,
@@ -91,8 +98,9 @@ async def get_project_features(
             statuses=[status.value for status in statuses] if statuses else None,
             limit=limit,
         )
+        return _tool_result(result)
     except ProjectToolValidationError as exc:
-        return ProjectFeaturesResult(resolution=_validation(str(exc)))
+        return _tool_result(ProjectFeaturesResult(resolution=_validation(str(exc))))
 
 
 @tool("get_project_blockers")
@@ -105,13 +113,13 @@ async def get_project_blockers(
     limit: int = 50,
     claims: Annotated[AssistantClaims | None, InjectedState("claims")] = None,
     pool: Annotated[Any, InjectedState("pool")] = None,
-) -> ProjectBlockersResult:
+) -> str:
     """Query authorized project blockers by text, state, and severity."""
     context = _context(claims, pool)
     if isinstance(context, ProjectResolution):
-        return ProjectBlockersResult(resolution=context)
+        return _tool_result(ProjectBlockersResult(resolution=context))
     try:
-        return await get_blockers(
+        result = await get_blockers(
             context[1],
             claims=context[0],
             project_reference=project_reference,
@@ -121,8 +129,9 @@ async def get_project_blockers(
             severities=[severity.value for severity in severities] if severities else None,
             limit=limit,
         )
+        return _tool_result(result)
     except ProjectToolValidationError as exc:
-        return ProjectBlockersResult(resolution=_validation(str(exc)))
+        return _tool_result(ProjectBlockersResult(resolution=_validation(str(exc))))
 
 
 @tool("get_project_activity")
@@ -133,13 +142,13 @@ async def get_project_activity(
     limit: int = 50,
     claims: Annotated[AssistantClaims | None, InjectedState("claims")] = None,
     pool: Annotated[Any, InjectedState("pool")] = None,
-) -> ProjectActivityResult:
+) -> str:
     """Read bounded daily updates and feature-status history for a project."""
     context = _context(claims, pool)
     if isinstance(context, ProjectResolution):
-        return ProjectActivityResult(resolution=context)
+        return _tool_result(ProjectActivityResult(resolution=context))
     try:
-        return await get_activity(
+        result = await get_activity(
             context[1],
             claims=context[0],
             project_reference=project_reference,
@@ -147,8 +156,9 @@ async def get_project_activity(
             since=since,
             limit=limit,
         )
+        return _tool_result(result)
     except ProjectToolValidationError as exc:
-        return ProjectActivityResult(resolution=_validation(str(exc)))
+        return _tool_result(ProjectActivityResult(resolution=_validation(str(exc))))
 
 
 @tool("search_project_knowledge")
@@ -160,28 +170,28 @@ async def search_project_knowledge(
     access_filter: Annotated[AccessFilter | None, InjectedState("access_filter")] = None,
     claims: Annotated[AssistantClaims | None, InjectedState("claims")] = None,
     pool: Annotated[Any, InjectedState("pool")] = None,
-) -> ProjectKnowledgeResult:
+) -> str:
     """Search access-filtered knowledge after resolving the project."""
     if not query.strip():
-        return ProjectKnowledgeResult(
+        return _tool_result(ProjectKnowledgeResult(
             resolution=_validation("query must not be empty"), query=query
-        )
+        ))
     if access_filter is None:
-        return ProjectKnowledgeResult(
+        return _tool_result(ProjectKnowledgeResult(
             resolution=ProjectResolution(
                 status="forbidden", message="Authenticated access filter is unavailable"
             ),
             query=query,
-        )
+        ))
     try:
         validate_top_k(top_k)
     except ProjectToolValidationError as exc:
-        return ProjectKnowledgeResult(resolution=_validation(str(exc)), query=query)
+        return _tool_result(ProjectKnowledgeResult(resolution=_validation(str(exc)), query=query))
     context = _context(claims, pool)
     if isinstance(context, ProjectResolution):
-        return ProjectKnowledgeResult(resolution=context, query=query)
+        return _tool_result(ProjectKnowledgeResult(resolution=context, query=query))
     try:
-        return await search_project_knowledge_for_actor(
+        result = await search_project_knowledge_for_actor(
             context[1],
             claims=context[0],
             access_filter=access_filter,
@@ -190,8 +200,9 @@ async def search_project_knowledge(
             project_id=project_id,
             top_k=top_k,
         )
+        return _tool_result(result)
     except ProjectToolValidationError as exc:
-        return ProjectKnowledgeResult(resolution=_validation(str(exc)), query=query)
+        return _tool_result(ProjectKnowledgeResult(resolution=_validation(str(exc)), query=query))
 
 
 _PROJECT_TAGS = ("project", "read-only")

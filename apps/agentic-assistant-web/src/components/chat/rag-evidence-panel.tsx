@@ -16,13 +16,6 @@ interface RagEvidencePanelProps {
   sources?: RAGSourceEvidence[];
 }
 
-/** Score → colour: 0%=slate, 60%=amber, 90%=emerald */
-function scoreColor(score: number): string {
-  if (score >= 0.85) return "bg-emerald-950/60 text-emerald-300 border-emerald-800/40";
-  if (score >= 0.65) return "bg-amber-950/60 text-amber-300 border-amber-800/40";
-  return "bg-slate-800/60 text-slate-400 border-slate-700/40";
-}
-
 export function RagEvidencePanel({
   rewriteQuery,
   expandedQueries,
@@ -122,13 +115,6 @@ export function RagEvidencePanel({
                             <span className="px-1.5 py-0.5 rounded-md bg-purple-950/60 text-purple-300 border border-purple-800/40 text-[10px] flex items-center gap-0.5">
                               <Shield className="w-2.5 h-2.5" />
                               {src.access_level}
-                            </span>
-                          )}
-                          {typeof src.score === "number" && (
-                            <span
-                              className={`font-mono text-[10px] px-1.5 py-0.5 rounded-md border ${scoreColor(src.score)}`}
-                            >
-                              {(src.score * 100).toFixed(0)}%
                             </span>
                           )}
                         </div>

@@ -1,11 +1,21 @@
 """Tests for the ReAct agent graph: routing, grounding, graph structure."""
 
+import json
 
-from langchain_core.messages import AIMessage
+import pytest
+from langchain_core.messages import AIMessage, ToolMessage
 from rag.types import AccessFilter, SearchResult, Source
 
 from agent.graph.nodes import check_grounding, route_after_agent, route_after_classify
-from agent.graph.state import make_initial_state
+from agent.graph.nodes.classify import _enforce_project_selection
+from agent.graph.nodes.generate_final import _assemble_context
+from agent.graph.nodes.routing import _needs_project_search_fallback
+from agent.graph.state import make_initial_state, merge_project_evidence
+from agent.graph.tool_runner import (
+    _build_project_evidence,
+    force_project_search,
+    make_tool_runner,
+)
 from agent.graph.workflow import get_agent_graph
 
 
@@ -113,3 +123,182 @@ def test_graph_compiles_with_expected_nodes():
     assert "chitchat_respond" in node_keys
     assert "agent" in node_keys
     assert "tools" in node_keys
+
+
+def test_project_questions_force_knowledge_search_with_structured_reads():
+    selected = _enforce_project_selection(
+        "Tell me about the Workalay internal agentic assistant project",
+        {"intent": "needs_tools", "tools": ["search_knowledge_base"]},
+    )["tools"]
+    assert "get_project_overview" in selected
+    assert "search_project_knowledge" in selected
+
+    daily = _enforce_project_selection(
+        "What was the daily update for Workalay?",
+        {"intent": "needs_tools", "tools": []},
+    )["tools"]
+    assert "get_project_activity" in daily
+    assert "search_project_knowledge" in daily
+
+    context = _enforce_project_selection(
+        "What is the current progress and context?",
+        {"intent": "chitchat", "tools": []},
+    )["tools"]
+    assert context == ["get_project_overview", "search_project_knowledge"]
+
+
+def test_explicit_status_question_can_remain_structured_only():
+    selected = _enforce_project_selection(
+        "What is the project completion percentage?",
+        {"intent": "needs_tools", "tools": []},
+    )["tools"]
+    assert selected == ["get_project_overview"]
+
+
+def test_empty_structured_project_result_forces_knowledge_search():
+    state = _state(
+        selected_tools=["get_project_activity", "search_project_knowledge"],
+        project_tool_outcomes=[
+            {"tool": "get_project_activity", "status": "resolved", "result_count": 0}
+        ],
+    )
+    assert _needs_project_search_fallback(state)
+
+
+def test_project_context_guidance_is_present_for_empty_results():
+    state = _state(
+        selected_tools=["get_project_activity", "search_project_knowledge"],
+        project_tool_outcomes=[
+            {"tool": "get_project_activity", "status": "resolved", "result_count": 0}
+        ],
+    )
+    context = _assemble_context(state)
+    assert "no records were found" in context
+    assert "Project tool outcome summary" in context
+
+
+def test_project_context_requires_resolved_project_name_in_answer():
+    context = _assemble_context(
+        _state(
+            resolved_project={"project_id": "p-1", "name": "Workalaya"},
+            selected_tools=["get_project_blockers"],
+        )
+    )
+    assert "Resolved project identity: Workalaya" in context
+    assert "mention that project in the opening sentence" in context
+
+
+@pytest.mark.asyncio
+async def test_tool_runner_promotes_project_knowledge_to_grounding_state():
+    result = _result(text="The assistant ships weekly.", source="workalay.md")
+
+    class FakeToolNode:
+        async def ainvoke(self, _state, config=None):
+            return {
+                "messages": [
+                    ToolMessage(
+                        name="search_project_knowledge",
+                        tool_call_id="call-1",
+                        content=json.dumps(
+                            {
+                                "resolution": {
+                                    "status": "resolved",
+                                    "project": {
+                                        "project_id": "p-1",
+                                        "name": "Workalay",
+                                        "description": "Internal assistant",
+                                    },
+                                    "candidates": [],
+                                    "message": "resolved",
+                                },
+                                "results": [result.model_dump(mode="json")],
+                                "query": "about Workalay",
+                            }
+                        ),
+                    )
+                ]
+            }
+
+    state = _state()
+    output = await make_tool_runner(FakeToolNode())(state)
+    assert output["project_tool_outcomes"][0]["knowledge_result_count"] == 1
+    assert output["project_evidence"][0].project_name == "Workalay"
+    assert output["project_evidence"][0].records[0]["source"] == "workalay.md"
+    assert output["results"][0].text == result.text
+    assert output["sources"][0]["source"] == "workalay.md"
+    assert output["resolved_project"].name == "Workalay"
+
+
+def test_force_project_search_uses_resolved_project_name():
+    state = _state(
+        resolved_project={"project_id": "p-1", "name": "Workalay", "description": None}
+    )
+    output = force_project_search(state)
+    assert output["messages"][0].tool_calls[0]["name"] == "search_project_knowledge"
+    assert output["messages"][0].tool_calls[0]["args"]["project_reference"] == "Workalay"
+
+
+def test_project_empty_evidence_uses_explicit_current_record_semantics():
+    from agent.graph.nodes.generate_final import _format_project_evidence
+
+    text = _format_project_evidence(
+        [
+            {
+                "tool": "get_project_blockers",
+                "status": "resolved",
+                "project_name": "Workalay",
+                "result_count": 0,
+                "summary": {},
+                "records": [],
+            }
+        ]
+    )
+    assert "No blockers are currently reported for Workalay" in text
+
+
+def test_project_evidence_reducer_keeps_one_latest_card_per_tool():
+    first = _build_project_evidence(
+        "get_project_blockers",
+        {"resolution": {"status": "resolved", "project": {"name": "P"}}, "blockers": []},
+    )
+    latest = _build_project_evidence(
+        "get_project_blockers",
+        {
+            "resolution": {"status": "resolved", "project": {"name": "P"}},
+            "blockers": [{"title": "Billing", "status": "open", "severity": "critical"}],
+        },
+    )
+    assert first is not None and latest is not None
+    merged = merge_project_evidence([first], [latest])
+    assert len(merged) == 1
+    assert merged[0].records[0]["title"] == "Billing"
+
+
+@pytest.mark.parametrize(
+    ("tool", "payload", "count"),
+    [
+        ("get_project_overview", {"resolution": {"status": "resolved", "project": {"name": "P"}}, "feature_counts": {}, "open_blocker_count": 0}, 1),
+        ("get_project_features", {"resolution": {"status": "resolved", "project": {"name": "P"}}, "features": [], "feature_counts": {}}, 0),
+        ("get_project_blockers", {"resolution": {"status": "resolved", "project": {"name": "P"}}, "blockers": []}, 0),
+        ("get_project_activity", {"resolution": {"status": "resolved", "project": {"name": "P"}}, "updates": [], "history": []}, 0),
+        ("search_project_knowledge", {"resolution": {"status": "resolved", "project": {"name": "P"}}, "query": "q", "results": []}, 0),
+    ],
+)
+def test_project_tool_evidence_covers_empty_result_contract(tool, payload, count):
+    evidence = _build_project_evidence(tool, payload)
+    assert evidence is not None
+    assert evidence.project_name == "P"
+    assert evidence.result_count == count
+    assert evidence.records == []
+
+
+@pytest.mark.parametrize("status", ["ambiguous", "not_found", "forbidden"])
+def test_project_tool_evidence_preserves_resolution_outcomes(status):
+    evidence = _build_project_evidence(
+        "get_project_blockers",
+        {"resolution": {"status": status, "message": "safe message"}, "blockers": []},
+    )
+    assert evidence is not None
+    assert evidence.status == status
+    assert evidence.project_name is None
+    assert evidence.message == "safe message"

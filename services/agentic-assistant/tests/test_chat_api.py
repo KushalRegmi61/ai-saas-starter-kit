@@ -200,6 +200,16 @@ def _patch_stream_chat(monkeypatch):
             "type": "done",
             "answer": "hi there",
             "sources": [],
+            "project_evidence": [
+                {
+                    "tool": "get_project_blockers",
+                    "status": "resolved",
+                    "project_name": "Workalay",
+                    "result_count": 0,
+                    "summary": {"open_blocker_count": 0},
+                    "records": [],
+                }
+            ],
             "grounded": False,
             "rewritten_question": None,
             "workflow_steps": ["classify", "chitchat_respond"],
@@ -251,6 +261,7 @@ async def test_stream_chat_done_carries_answer_and_mints_conversation_id(monkeyp
     assert [event["content"] for event in events if event["type"] == "token"] == ["hi ", "there"]
     done = events[-1]
     assert done["answer"] == "hi there"
+    assert done["project_evidence"][0]["project_name"] == "Workalay"
     assert done["conversation_id"]
     assert calls["loaded"] == []
     assert len(calls["appended"]) == 1

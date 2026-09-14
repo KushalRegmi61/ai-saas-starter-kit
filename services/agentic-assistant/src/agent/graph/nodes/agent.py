@@ -39,6 +39,7 @@ _REACT_SYSTEM_TEMPLATE = """\
 You are a helpful enterprise knowledge assistant that reasons step by step.
 
 {memory_block}\
+{project_guidance}\
 Follow the ReAct pattern:
   Thought: reason about what you know and what you need to find out
   Action: call the appropriate tool if more information is needed
@@ -51,6 +52,12 @@ Guidelines:
 - Cite sources from the context in your final answer
 - If the knowledge base does not contain an answer, say so honestly
 - Do not fabricate information not present in tool results
+- For project questions, use the selected structured project tool and
+  search_project_knowledge before answering whenever both are available.
+- If a structured project tool returns an empty collection, continue to the
+  selected knowledge search instead of concluding that nothing is known.
+- Use the user's project name as project_reference and the complete question
+  as the knowledge query; never invent a project ID.
 
 Budget status: {iterations}/{max_iterations} steps, {tokens_used}/{max_tokens} tokens.
 {budget_warning}"""
@@ -81,6 +88,7 @@ async def agent_node(state: AgentState, config: Optional[RunnableConfig] = None)
     if iterations == 0:
         system = _REACT_SYSTEM_TEMPLATE.format(
             memory_block=_build_memory_block(state),
+            project_guidance=_build_project_guidance(state),
             iterations=iterations,
             max_iterations=MAX_ITERATIONS,
             tokens_used=tokens_used,
@@ -136,3 +144,16 @@ def _build_memory_block(state: AgentState) -> str:
         ]
         parts.append("Recent conversation:\n" + "\n".join(lines) + "\n\n")
     return "".join(parts)
+
+
+def _build_project_guidance(state: AgentState) -> str:
+    selected = state.get("selected_tools", [])
+    if not any(name.startswith("get_project_") or name == "search_project_knowledge" for name in selected):
+        return ""
+    outcomes = state.get("project_tool_outcomes", [])
+    if not outcomes:
+        return (
+            "Project retrieval is active. Call the selected structured project tool "
+            "and search_project_knowledge before synthesizing an answer.\n\n"
+        )
+    return "Project retrieval outcomes are present; use them before making another claim.\n\n"

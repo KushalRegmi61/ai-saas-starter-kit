@@ -6,6 +6,7 @@ import type {
   AgentStep,
   ConversationTurn,
   RAGSourceEvidence,
+  ProjectToolEvidence,
   StreamEvent,
 } from "../types";
 
@@ -18,6 +19,7 @@ export interface ActiveChatMessage {
   rewriteQuery?: string;
   expandedQueries?: string[];
   sources?: RAGSourceEvidence[];
+  projectEvidence?: ProjectToolEvidence[];
   error?: string;
 }
 
@@ -150,6 +152,7 @@ export function useAssistantChat(token: string | null) {
               sources: event.sources
                 ? event.sources.map(toEvidence)
                 : last.sources,
+              projectEvidence: event.project_evidence,
               isStreaming: false,
             },
           ];

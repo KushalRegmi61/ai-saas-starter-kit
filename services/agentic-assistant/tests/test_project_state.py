@@ -1,7 +1,9 @@
 """Project-state persistence and service tests."""
 
+import sys
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from types import ModuleType
 
 import pytest
 
@@ -146,6 +148,32 @@ async def test_daily_update_validates_completion_before_database(monkeypatch):
             completion_percentage=101,
             blocker_ids=[],
         )
+
+
+@pytest.mark.asyncio
+async def test_actor_scoped_reads_use_project_access_service(monkeypatch):
+    calls = []
+
+    async def authorize(pool, *, claims, project_id):
+        calls.append((pool, claims, project_id))
+        return Project(id=project_id, name="Payments")
+
+    access_module = ModuleType("service.projects")
+    access_module.get_project_for_actor = authorize
+    monkeypatch.setitem(sys.modules, "service.projects", access_module)
+    async def list_features(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(state_service.project_state, "list_project_features_async", list_features)
+
+    claims = object()
+    pool = FakePool()
+    result = await state_service.list_features_for_actor(
+        pool, claims=claims, project_id="project-1"
+    )
+
+    assert result == []
+    assert calls == [(pool, claims, "project-1")]
 
 
 def test_context_is_bound_to_the_token_project():

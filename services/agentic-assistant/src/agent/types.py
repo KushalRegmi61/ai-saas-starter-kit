@@ -1,7 +1,7 @@
 """Assistant boundary types. Reuses rag contract types; no logic."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from rag.types import IngestionResult, SearchMode, SearchResult, Source
@@ -148,3 +148,24 @@ class ProjectKnowledgeResult(BaseModel):
     resolution: ProjectResolution
     results: list[SearchResult] = Field(default_factory=list, max_length=10)
     query: str
+
+
+ProjectToolName = Literal[
+    "get_project_overview",
+    "get_project_features",
+    "get_project_blockers",
+    "get_project_activity",
+    "search_project_knowledge",
+]
+
+
+class ProjectToolEvidence(BaseModel):
+    """Safe, UI-facing evidence emitted by one project read tool."""
+
+    tool: ProjectToolName
+    status: ProjectResolutionStatus
+    project_name: str | None = None
+    result_count: int = Field(default=0, ge=0)
+    summary: dict[str, Any] = Field(default_factory=dict)
+    records: list[dict[str, Any]] = Field(default_factory=list, max_length=10)
+    message: str | None = None

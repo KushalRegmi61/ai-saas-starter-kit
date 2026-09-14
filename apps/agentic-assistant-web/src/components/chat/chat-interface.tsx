@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { useAssistantChat } from "../../lib/use-assistant-chat";
 import { RagEvidencePanel } from "./rag-evidence-panel";
+import { ProjectEvidencePanel } from "./project-evidence-panel";
+import { MarkdownMessage } from "./markdown-message";
 import { ThinkingIndicator } from "./thinking-indicator";
 import type { AgentStep } from "./thinking-indicator";
 
@@ -231,7 +233,7 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
                     <ThinkingIndicator step={deriveStep(msg)} />
                   ) : (
                     <>
-                      <span className="whitespace-pre-wrap">{msg.content}</span>
+                      <MarkdownMessage content={msg.content} />
                       {msg.isStreaming && (
                         <span className="blink inline-block ml-0.5 -mb-0.5 w-[2px] h-[1em] bg-indigo-400 rounded-sm" />
                       )}
@@ -247,11 +249,14 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
 
                 {/* RAG Evidence (assistant only) */}
                 {msg.role === "assistant" && (
-                  <RagEvidencePanel
-                    rewriteQuery={msg.rewriteQuery}
-                    expandedQueries={msg.expandedQueries}
-                    sources={msg.sources}
-                  />
+                  <>
+                    <RagEvidencePanel
+                      rewriteQuery={msg.rewriteQuery}
+                      expandedQueries={msg.expandedQueries}
+                      sources={msg.sources}
+                    />
+                    <ProjectEvidencePanel evidence={msg.projectEvidence} />
+                  </>
                 )}
               </div>
             </div>

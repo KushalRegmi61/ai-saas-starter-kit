@@ -81,5 +81,24 @@ def route_after_agent(state: AgentState) -> str:
         )
         return "generate"
 
+    if _needs_project_search_fallback(state):
+        logger.info("route: agent -> force_project_search after empty structured result")
+        return "force_project_search"
+
     logger.info("route: agent -> tools (iteration=%d tokens=%d)", iterations, tokens)
     return "tools"
+
+
+def _needs_project_search_fallback(state: AgentState) -> bool:
+    selected = state.get("selected_tools", [])
+    if "search_project_knowledge" not in selected:
+        return False
+    outcomes = state.get("project_tool_outcomes", [])
+    if not outcomes or any(item.get("tool") == "search_project_knowledge" for item in outcomes):
+        return False
+    return any(
+        item.get("tool", "").startswith("get_project_")
+        and item.get("status") == "resolved"
+        and item.get("result_count", 0) == 0
+        for item in outcomes
+    )

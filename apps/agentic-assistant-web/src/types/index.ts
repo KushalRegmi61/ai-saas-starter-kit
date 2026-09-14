@@ -188,6 +188,24 @@ export interface StreamEventDone {
   conversation_id: string;
   answer: string;
   sources: RAGSourceEvidence[];
+  project_evidence: ProjectToolEvidence[];
+}
+
+export type ProjectToolName =
+  | "get_project_overview"
+  | "get_project_features"
+  | "get_project_blockers"
+  | "get_project_activity"
+  | "search_project_knowledge";
+
+export interface ProjectToolEvidence {
+  tool: ProjectToolName;
+  status: "resolved" | "unresolved" | "not_found" | "ambiguous" | "forbidden" | "validation_error";
+  project_name?: string | null;
+  result_count: number;
+  summary: Record<string, unknown>;
+  records: Array<Record<string, unknown>>;
+  message?: string | null;
 }
 
 export interface StreamEventError {

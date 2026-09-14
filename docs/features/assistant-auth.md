@@ -113,6 +113,16 @@ updates, feature history, and project audit events. Lead and admin users can
 manage labelled, one-time MCP credentials through the existing token routes;
 raw credentials are never returned by list or audit endpoints.
 
+Project questions in the assistant use the same role-scoped project reads and
+also search project knowledge for narrative context when the question is about
+progress, work, updates, decisions, or documentation. Structured project
+state remains authoritative. Empty feature, blocker, update, or knowledge
+collections are reported as missing records for the resolved project rather
+than being collapsed into a generic unknown response; ambiguous, unavailable,
+and failed reads remain distinct outcomes. The current assistant turn also
+renders bounded project-tool evidence cards below the answer, alongside any
+RAG document sources, without exposing project IDs or authorization metadata.
+
 Deferred: API forwarding of the caller's JWT, password reset/change, and
 login rate limiting. See
 `docs/superpowers/specs/2026-09-12-assistant-auth-lib-design.md`.

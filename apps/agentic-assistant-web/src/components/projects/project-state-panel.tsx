@@ -7,6 +7,7 @@ import type { DailyProjectUpdate, FeatureStatusHistory, ProjectAuditEvent, Proje
 interface Props { projectId: string; token: string | null }
 
 const date = (value: string | null) => value ? new Date(value).toLocaleString() : "Unknown";
+const updateSummary = (value: string) => value.replace(/\\n/g, "\n").trim();
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return <section className="rounded-xl border border-slate-800 bg-slate-900 p-4"><h3 className="text-[10px] uppercase tracking-wide text-indigo-400">{title}</h3><div className="mt-3">{children}</div></section>;
@@ -56,7 +57,7 @@ export function ProjectStatePanel({ projectId, token }: Props) {
 
     <Section title="Open blockers">{context.open_blockers.length === 0 ? <p className="text-xs text-slate-500">No open blockers.</p> : <div className="space-y-2">{context.open_blockers.map((blocker) => <div key={blocker.id} className="rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-xs"><div className="flex justify-between gap-3"><span className="font-semibold">{blocker.title}</span><span className="text-amber-300">{blocker.severity}</span></div>{blocker.description && <p className="mt-1 text-slate-400">{blocker.description}</p>}</div>)}</div>}</Section>
 
-    <Section title="Daily updates">{updates.length === 0 ? <p className="text-xs text-slate-500">No daily updates recorded.</p> : <div className="space-y-3">{updates.map((update) => <article key={update.id} className="border-b border-slate-800 pb-3 last:border-0 last:pb-0"><div className="flex justify-between gap-3 text-[10px] text-slate-500"><span>{date(update.created_at)}</span><span>{update.completion_percentage}%</span></div><p className="mt-1 text-xs text-slate-300">{update.summary}</p></article>)}</div>}</Section>
+    <Section title="Daily updates">{updates.length === 0 ? <p className="text-xs text-slate-500">No daily updates recorded.</p> : <div className="space-y-3">{updates.map((update) => <article key={update.id} className="rounded-lg border border-slate-800 bg-slate-950/40 p-3"><div className="flex items-start justify-between gap-3"><time className="text-[10px] text-slate-500">{date(update.created_at)}</time><span className="shrink-0 rounded-full border border-indigo-500/40 bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-300">{update.completion_percentage}% complete</span></div><p className="mt-3 whitespace-pre-wrap break-words text-xs leading-5 text-slate-300">{updateSummary(update.summary)}</p></article>)}</div>}</Section>
 
     <Section title="Feature history">{history.length === 0 ? <p className="text-xs text-slate-500">No feature transitions recorded.</p> : <div className="space-y-2">{history.map((item) => <div key={item.id} className="flex justify-between gap-3 text-xs"><span>{item.feature_name}: {item.old_status} → {item.new_status}</span><span className="shrink-0 text-[10px] text-slate-500">{date(item.changed_at)}</span></div>)}</div>}</Section>
 

@@ -1,12 +1,13 @@
 """Registration, authorization, and retrieval tests for project tools."""
 
+import json
+
 import pytest
 from rag.types import AccessFilter, SearchResponse
 
 import agent.tools.project as project_tools
 import service.project_tools as project_service
 from agent.tools.registry import get_entries, get_tool_names
-from agent.types import ProjectResolution
 from service.project_tools import (
     ProjectToolValidationError,
     resolve_project_for_actor,
@@ -171,8 +172,8 @@ async def test_registered_tools_return_typed_context_error_without_request_conte
         "get_project_activity",
     ):
         result = await getattr(project_tools, name).ainvoke({"project_reference": "Payments"})
-        assert isinstance(result.resolution, ProjectResolution)
-        assert result.resolution.status == "forbidden"
+        payload = json.loads(result)
+        assert payload["resolution"]["status"] == "forbidden"
 
 
 def test_project_tools_are_active_in_registry():

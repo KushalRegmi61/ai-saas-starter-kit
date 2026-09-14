@@ -17,9 +17,19 @@ from auth.types import AssistantClaims
 from langchain_core.messages import BaseMessage
 from rag.types import AccessFilter, SearchMode, SearchResult
 
-from agent.types import ProjectCandidate
+from agent.types import ProjectCandidate, ProjectToolEvidence
 
 logger = logging.getLogger(__name__)
+
+
+def merge_project_evidence(
+    existing: list[ProjectToolEvidence],
+    incoming: list[ProjectToolEvidence],
+) -> list[ProjectToolEvidence]:
+    """Keep one latest evidence card per project tool during a turn."""
+    merged = {item.tool: item for item in existing}
+    merged.update({item.tool: item for item in incoming})
+    return list(merged.values())
 
 
 class AgentState(dict):
@@ -41,6 +51,8 @@ class AgentState(dict):
     pool: Any                              # request-scoped assistant database pool
     resolved_project: ProjectCandidate | None
     project_candidates: list[ProjectCandidate]
+    project_tool_outcomes: Annotated[list[dict[str, Any]], operator.add]
+    project_evidence: Annotated[list[ProjectToolEvidence], merge_project_evidence]
 
     # ------------------------------------------------------------------ #
     # ReAct loop — mutated each iteration                                 #
@@ -96,6 +108,8 @@ def make_initial_state(
         "pool": pool,
         "resolved_project": None,
         "project_candidates": [],
+        "project_tool_outcomes": [],
+        "project_evidence": [],
         # react loop
         "messages": [],
         "intent": "",

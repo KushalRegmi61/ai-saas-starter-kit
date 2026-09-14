@@ -24,7 +24,13 @@ class ProjectStateValidationError(ProjectStateError):
 
 
 async def _authorized_project(pool: Any, *, claims: AssistantClaims, project_id: str):
-    project = await projects.get_project_for_actor(pool, claims=claims, project_id=project_id)
+    # Import lazily because service.projects depends on agent.authz, whose
+    # package initializer registers graph tools that depend on this service.
+    from service import projects as project_access
+
+    project = await project_access.get_project_for_actor(
+        pool, claims=claims, project_id=project_id
+    )
     return project
 
 

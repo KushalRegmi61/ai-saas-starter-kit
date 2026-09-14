@@ -100,8 +100,70 @@ def _assemble_context(state: AgentState) -> str:
         "status, completion, blockers, feature counts, and history. Treat RAG "
         "results as supporting context only. If resolution is ambiguous, ask "
         "the user to choose from the returned candidates. Do not expose IDs, "
-        "claims, pool details, token data, or authorization internals."
+        "claims, pool details, token data, or authorization internals. "
+        "When a project is resolved, use its exact resolved name and mention "
+        "that project in the opening sentence of the answer. Tie every "
+        "blocker, feature, update, and status claim to that named project. "
+        "If a resolved project has empty features, blockers, updates, or "
+        "knowledge results, explain warmly that no records were found and "
+        "summarize any remaining project facts. Distinguish not-found, "
+        "ambiguous, forbidden, and tool-error outcomes. Do not say 'I don't "
+        "know' when a meaningful project result or empty-record explanation "
+        "is available."
     )
-    if state.get("resolved_project") or state.get("project_candidates"):
+    if (
+        state.get("resolved_project")
+        or state.get("project_candidates")
+        or state.get("project_tool_outcomes")
+        or any(
+            name.startswith("get_project_") or name == "search_project_knowledge"
+            for name in state.get("selected_tools", [])
+        )
+    ):
         blocks.insert(0, project_guidance)
+        resolved = state.get("resolved_project")
+        if resolved:
+            name = resolved.name if hasattr(resolved, "name") else resolved.get("name")
+            if name:
+                blocks.insert(1, f"Resolved project identity: {name}. Name this project in the opening sentence.")
+        evidence_context = _format_project_evidence(state.get("project_evidence", []))
+        if evidence_context:
+            blocks.insert(1, evidence_context)
+        outcomes = state.get("project_tool_outcomes", [])
+        if outcomes:
+            blocks.insert(1, "Project tool outcome summary:\n" + str(outcomes))
     return "\n\n---\n\n".join(blocks)
+
+
+def _format_project_evidence(evidence: list[object]) -> str:
+    """Create deterministic semantics for empty project collections."""
+    lines = ["Authoritative project evidence:"]
+    for item in evidence:
+        data = item.model_dump(mode="json") if hasattr(item, "model_dump") else item
+        if not isinstance(data, dict):
+            continue
+        project = data.get("project_name") or "the requested project"
+        tool = data.get("tool", "project tool")
+        status = data.get("status")
+        count = data.get("result_count", 0)
+        if status == "resolved" and tool == "get_project_blockers" and count == 0:
+            lines.append(
+                f"No blockers are currently reported for {project} based on current project records."
+            )
+        elif status == "resolved" and tool == "get_project_features" and count == 0:
+            lines.append(f"No features are currently recorded for {project}.")
+        elif status == "resolved" and tool == "get_project_activity" and count == 0:
+            lines.append(f"No daily updates or feature history are currently recorded for {project}.")
+        elif status == "resolved" and tool == "search_project_knowledge" and count == 0:
+            lines.append(
+                f"No supporting project knowledge was found for {project}; use structured project records when available."
+            )
+        elif status == "ambiguous":
+            lines.append("The project reference is ambiguous; ask the user to choose a matching project.")
+        elif status == "not_found":
+            lines.append("No authorized project matched the requested reference.")
+        elif status == "forbidden":
+            lines.append("Project details are unavailable because the current user cannot access them.")
+        elif status not in ("resolved", None):
+            lines.append(f"{tool} returned status {status}; do not present the result as confirmed project data.")
+    return "\n".join(lines) if len(lines) > 1 else ""
