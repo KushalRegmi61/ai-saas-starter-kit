@@ -14,6 +14,7 @@ Runs check_grounding after accumulating the full answer.
 
 from __future__ import annotations
 
+import json
 import logging
 
 # Optional[] (not `| None`): langgraph only recognises this spelling for
@@ -42,6 +43,31 @@ _FALLBACK_GUIDANCE = (
     "relevant information, say honestly that the information is not available. "
     "Do not let the project denial alone decide the answer when knowledge "
     "results exist."
+)
+
+# Identifier/credential-adjacent keys pruned from tool JSON before generation.
+# The model must never see IDs, call correlation IDs, filters, or identity
+# material: echoing any of them trips the internal_data grounding audit and a
+# good cited draft gets discarded. Names, statuses, summaries, and messages
+# are facts the answer needs and are always kept.
+_INTERNAL_KEYS = frozenset(
+    {
+        "project_id",
+        "project_ids",
+        "tool_call_id",
+        "access_filter",
+        "claims",
+        "pool",
+        "authorization",
+        "bearer",
+        "token",
+        "tokens",
+        "lead_id",
+        "owner_id",
+        "actor_id",
+        "subject",
+        "email",
+    }
 )
 
 
@@ -108,7 +134,7 @@ def _assemble_context(state: AgentState) -> str:
                     item.get("text", str(item)) if isinstance(item, dict) else str(item)
                     for item in content
                 )
-            blocks.append(str(content))
+            blocks.append(_sanitize_tool_content(str(content)))
 
     project_guidance = (
         "Project-answer rules: structured project results are authoritative for "
@@ -154,6 +180,37 @@ def _assemble_context(state: AgentState) -> str:
     if project_access_denied(state) and global_search_completed(state):
         blocks.insert(0, _FALLBACK_GUIDANCE)
     return "\n\n---\n\n".join(blocks)
+
+
+def _sanitize_tool_content(content: str) -> str:
+    """Prune internal identifiers from tool JSON before generation.
+
+    Non-JSON content (RAG text blocks, error strings) passes through
+    untouched. Unparseable-after-prune content falls back to the original so
+    a sanitizer bug can never blank the generation context.
+    """
+    try:
+        payload = json.loads(content)
+    except (TypeError, ValueError):
+        return content
+    pruned = _prune_internal(payload)
+    try:
+        return json.dumps(pruned)
+    except (TypeError, ValueError):
+        return content
+
+
+def _prune_internal(value):
+    """Recursively drop _INTERNAL_KEYS from dicts; lists/scalars unchanged."""
+    if isinstance(value, dict):
+        return {
+            key: _prune_internal(item)
+            for key, item in value.items()
+            if key not in _INTERNAL_KEYS
+        }
+    if isinstance(value, list):
+        return [_prune_internal(item) for item in value]
+    return value
 
 
 def _format_project_evidence(evidence: list[object]) -> str:

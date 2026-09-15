@@ -15,7 +15,10 @@ knowledge.
 Answers generated for `needs_tools` are audited after generation. The answer
 must have authorized RAG or structured project evidence, cite retrieved RAG
 sources when applicable, remain tied to the resolved project, and avoid raw
-tool data or authorization details. The project-scope check tolerates natural
+tool data or authorization details. Before generation, tool JSON is redacted
+of identifiers and identity material (project/call IDs, filters, claims,
+tokens), so the model cannot echo them into the draft and trip the audit.
+The project-scope check tolerates natural
 paraphrase of the resolved project name (full name or a quorum of its
 significant tokens); only answers about an unrelated project fail it. Failed
 audits replace the answer with the same warm rejection template. That final

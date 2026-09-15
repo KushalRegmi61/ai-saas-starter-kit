@@ -775,3 +775,146 @@ def test_unknown_identity_fails_open_to_project_tools():
     )["tools"]
     assert "get_project_overview" in selected
     assert "search_project_knowledge" in selected
+
+
+# --------------------------------------------------------------------------- #
+# Generation-context redaction of internal identifiers                         #
+# --------------------------------------------------------------------------- #
+
+
+def test_assemble_context_redacts_internal_identifiers_but_keeps_facts():
+    """Raw tool JSON must not feed IDs/credential-adjacent keys to the model.
+
+    Regression: a 1536-char cited draft echoed a field label from the raw
+    activity envelope, tripped the internal_data audit, and recovery claimed
+    no updates existed despite resolved evidence.
+    """
+    payload = json.dumps(
+        {
+            "resolution": {
+                "status": "resolved",
+                "project": {
+                    "project_id": "p-1",
+                    "name": "workalaya internal knowledge assistant",
+                    "description": "Internal assistant",
+                },
+                "candidates": [],
+                "message": "resolved",
+            },
+            "updates": [
+                {
+                    "summary": "Implemented model routing.",
+                    "completion_percentage": 72,
+                    "created_at": "2026-09-13",
+                }
+            ],
+            "history": [],
+        }
+    )
+    state = _state(
+        selected_tools=["get_project_activity", "search_project_knowledge"],
+        messages=[
+            ToolMessage(
+                name="get_project_activity",
+                tool_call_id="call-1",
+                content=payload,
+            )
+        ],
+        project_tool_outcomes=[
+            {"tool": "get_project_activity", "status": "resolved", "result_count": 1}
+        ],
+    )
+    context = _assemble_context(state)
+    assert "project_id" not in context
+    assert "tool_call_id" not in context
+    assert "workalaya internal knowledge assistant" in context
+    assert "Implemented model routing." in context
+
+
+def test_assemble_context_leaves_non_json_tool_content_untouched():
+    state = _state(
+        selected_tools=["search_knowledge_base"],
+        messages=[
+            ToolMessage(
+                name="search_knowledge_base",
+                tool_call_id="call-2",
+                content="No relevant information found in the knowledge base for this query.",
+            )
+        ],
+    )
+    assert "No relevant information found" in _assemble_context(state)
+
+
+# --------------------------------------------------------------------------- #
+# Tool runner preservation of Command-returning tool updates                   #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_tool_runner_preserves_command_tool_updates():
+    """ToolNode returns a list holding the tool's Command (not a dict) when a
+    tool like search_knowledge_base returns Command. Dropping it loses the
+    ToolMessage, so the next agent turn resends an unanswered tool_call_id
+    and OpenAI rejects the request with a 400.
+    """
+    from langgraph.types import Command
+
+    result = _result(text="The assistant answers questions.", source="handbook.pdf")
+
+    class FakeToolNode:
+        async def ainvoke(self, _state, config=None):
+            return [
+                Command(
+                    update={
+                        "messages": [
+                            ToolMessage(
+                                name="search_knowledge_base",
+                                tool_call_id="call-global-1",
+                                content="The assistant answers questions.",
+                            )
+                        ],
+                        "sources": [{"source": "handbook.pdf", "snippet": "The assistant"}],
+                        "results": [result],
+                        "workflow_steps": ["search_knowledge_base: 1 chunks mode=semantic"],
+                    }
+                )
+            ]
+
+    state = _state()
+    output = await make_tool_runner(FakeToolNode())(state)
+    assert [m.tool_call_id for m in output["messages"]] == ["call-global-1"]
+    assert output["sources"][0]["source"] == "handbook.pdf"
+    assert output["results"][0].text == "The assistant answers questions."
+    # The tool's step must join the trail, not clobber it.
+    assert output["workflow_steps"] == ["search_knowledge_base: 1 chunks mode=semantic"]
+
+
+@pytest.mark.asyncio
+async def test_tool_runner_merges_command_and_dict_outputs():
+    from langgraph.types import Command
+
+    class FakeToolNode:
+        async def ainvoke(self, _state, config=None):
+            return [
+                Command(
+                    update={
+                        "messages": [
+                            ToolMessage(
+                                name="search_knowledge_base",
+                                tool_call_id="call-global-1",
+                                content="ctx",
+                            )
+                        ],
+                        "workflow_steps": ["search_knowledge_base: 1 chunks mode=hybrid"],
+                    }
+                ),
+                {"messages": []},
+            ]
+
+    state = _state(workflow_steps=["started agent workflow"])
+    output = await make_tool_runner(FakeToolNode())(state)
+    assert [m.tool_call_id for m in output["messages"]] == ["call-global-1"]
+    assert output["workflow_steps"] == [
+        "started agent workflow",
+        "search_knowledge_base: 1 chunks mode=hybrid",
+    ]

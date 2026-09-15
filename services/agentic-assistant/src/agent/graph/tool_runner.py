@@ -7,6 +7,7 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.prebuilt import ToolNode
+from langgraph.types import Command
 from rag.types import SearchResult
 
 from agent.graph.state import AgentState
@@ -18,8 +19,8 @@ def make_tool_runner(tool_node: ToolNode):
 
     async def run_tools(state: AgentState, config=None) -> dict:
         output = await tool_node.ainvoke(state, config=config)
-        messages = output.get("messages", []) if isinstance(output, dict) else []
-        updates: dict[str, Any] = {"messages": messages}
+        messages, passthrough, command_steps = _normalize_tool_output(output)
+        updates: dict[str, Any] = {"messages": messages, **passthrough}
         outcomes: list[dict[str, Any]] = []
         evidence: list[ProjectToolEvidence] = []
         for message in messages:
@@ -80,17 +81,56 @@ def make_tool_runner(tool_node: ToolNode):
         if outcomes:
             updates["project_tool_outcomes"] = outcomes
             updates["project_evidence"] = evidence
+        outcome_steps = [
+            f"{item['tool']}: status={item['status']} "
+            f"results={item.get('result_count', 0)}"
+            for item in outcomes
+        ]
+        if command_steps or outcome_steps:
+            # workflow_steps is last-wins, so the full trail must be returned —
+            # never just the new entries, or earlier steps are lost.
             updates["workflow_steps"] = [
                 *state.get("workflow_steps", []),
-                *[
-                    f"{item['tool']}: status={item['status']} "
-                    f"results={item.get('result_count', 0)}"
-                    for item in outcomes
-                ],
+                *command_steps,
+                *outcome_steps,
             ]
         return updates
 
     return run_tools
+
+
+def _normalize_tool_output(output: Any) -> tuple[list, dict[str, Any], list[str]]:
+    """Split ToolNode output into messages, state passthroughs, and steps.
+
+    Dict output (plain string-returning tools) carries only messages.
+    When any tool returns a Command (e.g. search_knowledge_base), ToolNode
+    yields a list mixing Command objects and message dicts — the Command
+    updates (messages, sources, results) must be preserved, otherwise the
+    next agent turn resends an unanswered tool_call_id and the provider
+    rejects the request. Command goto is ignored: graph edges own routing.
+    """
+    if isinstance(output, Command):
+        output = [output]
+    if isinstance(output, dict):
+        return list(output.get("messages", []) or []), {}, []
+    messages: list = []
+    passthrough: dict[str, Any] = {}
+    steps: list[str] = []
+    for item in output if isinstance(output, list) else []:
+        if isinstance(item, Command):
+            update = item.update if isinstance(item.update, dict) else {}
+            messages.extend(update.get("messages", []) or [])
+            for key in ("sources", "results"):
+                values = update.get(key) or []
+                if values:
+                    passthrough.setdefault(key, []).extend(values)
+            steps.extend(update.get("workflow_steps", []) or [])
+            for key, value in update.items():
+                if key not in ("messages", "sources", "results", "workflow_steps"):
+                    passthrough[key] = value
+        elif isinstance(item, dict):
+            messages.extend(item.get("messages", []) or [])
+    return messages, passthrough, steps
 
 
 def _project_result_count(tool_name: str, payload: dict) -> int:
