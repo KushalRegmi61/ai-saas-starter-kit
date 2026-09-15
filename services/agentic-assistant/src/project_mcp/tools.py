@@ -16,7 +16,8 @@ def register_tools(server: MCPServer, pool_provider: Any) -> None:
     @server.tool(
         description=(
             "Read the complete authoritative snapshot for the authenticated project: "
-            "status, completion, features, open blockers, and latest update."
+            "status, completion, feature counts plus feature names grouped by status, "
+            "open blockers, and latest update."
         )
     )
     async def get_project_context() -> dict[str, Any]:

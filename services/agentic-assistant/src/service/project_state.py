@@ -47,11 +47,14 @@ async def get_project_context_for_actor(pool: Any, *, claims: AssistantClaims, p
             connection, project_id=project_id
         )
     counts = {status.value: 0 for status in project_state.FeatureStatus}
+    grouped = {status.value: [] for status in project_state.FeatureStatus}
     for feature in features:
         counts[feature.status.value] += 1
+        grouped[feature.status.value].append(feature.name)
     return project_state.ProjectContext(
         project=project,
         feature_counts=counts,
+        features_by_status=grouped,
         open_blockers=blockers,
         latest_update=latest_update,
         scope={"project_id": project_id},
@@ -108,11 +111,14 @@ async def get_project_context(connection: Any, *, context: ProjectMcpContext):
         connection, project_id=context.project_id
     )
     counts = {status.value: 0 for status in project_state.FeatureStatus}
+    grouped = {status.value: [] for status in project_state.FeatureStatus}
     for feature in features:
         counts[feature.status.value] += 1
+        grouped[feature.status.value].append(feature.name)
     return project_state.ProjectContext(
         project=project,
         feature_counts=counts,
+        features_by_status=grouped,
         open_blockers=blockers,
         latest_update=latest_update,
         scope={"project_id": context.project_id},

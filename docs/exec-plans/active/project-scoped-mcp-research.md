@@ -289,7 +289,7 @@ context:
 
 | Tool | Read/write | Purpose |
 |---|---|---|
-| `get_project_context` | Read | Project summary, status, completion, feature counts, open blockers, latest update |
+| `get_project_context` | Read | Project summary, status, completion, feature counts plus feature names grouped by status, open blockers, latest update |
 | `get_project_updates` | Read | Bounded daily updates since an optional date/time |
 | `manage_project_feature` | Write | Explicitly create a feature or update a feature status by natural-language reference |
 | `manage_project_blocker` | Write | Explicitly create or resolve a blocker by natural-language reference |
@@ -308,6 +308,7 @@ JSON:
     "completion_percentage": 72
   },
   "feature_counts": {"DEV": 3, "QA": 5, "UAT": 4, "PROD": 18},
+  "features_by_status": {"DEV": ["Auth"], "QA": ["Billing"], "UAT": [], "PROD": []},
   "open_blockers": [],
   "latest_update": {},
   "scope": {"project_id": "p-123"}

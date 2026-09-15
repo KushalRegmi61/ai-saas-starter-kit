@@ -102,6 +102,9 @@ async def test_context_aggregates_project_features_and_open_blockers(monkeypatch
     assert result.project.completion_percentage == 72
     assert result.feature_counts["QA"] == 1
     assert result.feature_counts["DEV"] == 1
+    assert result.features_by_status["QA"] == ["Auth"]
+    assert result.features_by_status["DEV"] == ["Billing"]
+    assert result.features_by_status["PROD"] == []
     assert result.open_blockers[0].id == "blocker-1"
     assert result.scope == {"project_id": "project-1"}
 

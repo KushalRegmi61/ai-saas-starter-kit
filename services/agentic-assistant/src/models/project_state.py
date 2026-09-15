@@ -81,6 +81,7 @@ class FeatureStatusHistory(BaseModel):
 class ProjectContext(BaseModel):
     project: Project
     feature_counts: dict[str, int]
+    features_by_status: dict[str, list[str]] = Field(default_factory=dict)
     open_blockers: list[ProjectBlocker]
     latest_update: DailyProjectUpdate | None = None
     scope: dict[str, str]
