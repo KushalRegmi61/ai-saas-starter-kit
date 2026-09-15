@@ -230,3 +230,33 @@ def force_project_search(state: AgentState) -> dict:
             "project_search_fallback_called",
         ],
     }
+
+
+def force_global_search(state: AgentState) -> dict:
+    """Create a bounded fallback call after denied project access.
+
+    Mirrors force_project_search: a single deterministic search_knowledge_base
+    call with the full user question. The global RAG index is ABAC-filtered by
+    the same access_filter, so it only returns content the user may see.
+    generate_final answers from those results when present and abstains
+    honestly when absent.
+    """
+    return {
+        "messages": [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "search_knowledge_base",
+                        "args": {"question": state["question"]},
+                        "id": "global-search-fallback",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+        ],
+        "workflow_steps": [
+            *state.get("workflow_steps", []),
+            "global_search_fallback_called",
+        ],
+    }

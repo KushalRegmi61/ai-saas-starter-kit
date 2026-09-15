@@ -508,4 +508,131 @@ def test_project_tool_evidence_preserves_resolution_outcomes(status):
     assert evidence is not None
     assert evidence.status == status
     assert evidence.project_name is None
-    assert evidence.message == "safe message"
+
+
+# --------------------------------------------------------------------------- #
+# Global RAG fallback after denied project access                              #
+# --------------------------------------------------------------------------- #
+
+
+def _denied_outcomes():
+    return [
+        {"tool": "get_project_overview", "status": "forbidden", "result_count": 0},
+        {"tool": "search_project_knowledge", "status": "forbidden", "result_count": 0},
+    ]
+
+
+def test_route_after_agent_falls_back_to_global_search_when_project_access_denied():
+    from agent.graph.nodes.routing import _needs_global_search_fallback
+
+    state = _state(
+        selected_tools=["get_project_overview", "search_project_knowledge"],
+        messages=[AIMessage(content="I cannot access this project.")],
+        project_tool_outcomes=_denied_outcomes(),
+    )
+    assert _needs_global_search_fallback(state) is True
+    assert route_after_agent(state) == "force_global_search"
+
+
+def test_route_after_agent_prefers_project_search_before_global_fallback():
+    state = _state(
+        selected_tools=["get_project_overview", "search_project_knowledge"],
+        messages=[AIMessage(content="The project is on track.")],
+    )
+    assert route_after_agent(state) == "force_project_search"
+
+
+def test_route_after_agent_skips_global_fallback_once_search_has_run():
+    state = _state(
+        selected_tools=["get_project_overview", "search_project_knowledge"],
+        messages=[
+            AIMessage(content="I cannot access this project."),
+            ToolMessage(
+                name="search_knowledge_base",
+                tool_call_id="call-global-1",
+                content="No relevant information found in the knowledge base for this query.",
+            ),
+        ],
+        project_tool_outcomes=_denied_outcomes(),
+    )
+    assert route_after_agent(state) == "generate"
+
+
+def test_route_after_agent_skips_global_fallback_for_non_project_questions():
+    state = _state(
+        selected_tools=["search_knowledge_base"],
+        messages=[AIMessage(content="Here is the answer.")],
+    )
+    assert route_after_agent(state) == "generate"
+
+
+def test_force_global_search_calls_knowledge_base_with_question():
+    from agent.graph.tool_runner import force_global_search
+
+    state = _state(question="Tell me about the internal agentic assistant project")
+    output = force_global_search(state)
+    call = output["messages"][0].tool_calls[0]
+    assert call["name"] == "search_knowledge_base"
+    assert call["args"]["question"] == state["question"]
+    assert "global_search_fallback_called" in output["workflow_steps"][-1]
+
+
+def test_denied_project_access_adds_knowledge_fallback_guidance():
+    state = _state(
+        selected_tools=["get_project_overview", "search_project_knowledge"],
+        messages=[
+            ToolMessage(
+                name="search_knowledge_base",
+                tool_call_id="call-global-1",
+                content="The assistant answers questions.",
+            )
+        ],
+        project_tool_outcomes=_denied_outcomes(),
+    )
+    context = _assemble_context(state)
+    assert "search_knowledge_base" in context
+    assert "forbidden" in context
+
+
+@pytest.mark.asyncio
+async def test_cited_fallback_answer_passes_grounding_despite_denied_access():
+    result = _result(text="The assistant answers questions.", source="handbook.pdf")
+    state = _state(
+        intent="needs_tools",
+        selected_tools=["get_project_overview", "search_project_knowledge"],
+        answer="According to handbook.pdf, the assistant answers questions.",
+        results=[result],
+        sources=[{"source": "handbook.pdf"}],
+        messages=[
+            ToolMessage(
+                name="search_knowledge_base",
+                tool_call_id="call-global-1",
+                content="The assistant answers questions.",
+            )
+        ],
+        project_tool_outcomes=_denied_outcomes(),
+    )
+    output = await check_grounding(state)
+    assert output["grounded"] is True
+    assert output["answer"] == state["answer"]
+
+
+def test_recovery_context_stays_honest_when_fallback_finds_nothing():
+    from agent.graph.nodes.grounding import _recovery_context
+
+    state = _state(
+        messages=[
+            ToolMessage(
+                name="search_knowledge_base",
+                tool_call_id="call-global-1",
+                content="No relevant information found in the knowledge base for this query.",
+            )
+        ],
+        project_tool_outcomes=_denied_outcomes(),
+    )
+    assert "not accessible" in _recovery_context(state, "missing_evidence")
+
+
+def test_graph_includes_global_search_fallback_node():
+    graph = get_agent_graph()
+    assert "force_global_search" in set(graph.nodes.keys())

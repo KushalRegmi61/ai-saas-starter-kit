@@ -24,10 +24,25 @@ from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 
 from agent.graph.nodes.grounding import check_grounding
+from agent.graph.nodes.routing import global_search_completed, project_access_denied
 from agent.graph.state import AgentState
 from agent.llm import LLMContext, stream_response
 
 logger = logging.getLogger(__name__)
+
+# Prepended to the generation context when project tools denied access and the
+# global knowledge base was consulted as a fallback. Takes precedence over the
+# project-denial evidence: answer from RAG results when they exist, abstain
+# honestly when they do not.
+_FALLBACK_GUIDANCE = (
+    "Access fallback: every selected project tool returned forbidden, so "
+    "search_knowledge_base was consulted instead. The knowledge results below "
+    "are the authoritative source for this answer — answer from them with "
+    "source citations when they contain the information. If they contain no "
+    "relevant information, say honestly that the information is not available. "
+    "Do not let the project denial alone decide the answer when knowledge "
+    "results exist."
+)
 
 
 async def generate_final(
@@ -136,6 +151,8 @@ def _assemble_context(state: AgentState) -> str:
         outcomes = state.get("project_tool_outcomes", [])
         if outcomes:
             blocks.insert(1, "Project tool outcome summary:\n" + str(outcomes))
+    if project_access_denied(state) and global_search_completed(state):
+        blocks.insert(0, _FALLBACK_GUIDANCE)
     return "\n\n---\n\n".join(blocks)
 
 

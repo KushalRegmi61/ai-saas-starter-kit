@@ -18,6 +18,17 @@ sources when applicable, remain tied to the resolved project, and avoid raw
 tool data or authorization details. Failed audits replace the answer with the
 same warm rejection template. That final answer is persisted.
 
+When every selected project tool returns `forbidden`, the agent falls back to
+a single deterministic `search_knowledge_base` call with the full user
+question before generating the final answer. The global knowledge base is
+ABAC-filtered by the same access filter, so it only returns content the user
+may see. The final answer is then grounded in those knowledge results (with
+source citations) when they contain the information, and abstains honestly
+when they do not. The grounding audit treats those fallback RAG chunks as
+valid evidence, so the resolved-project-name requirement does not force a
+refusal on the fallback path. If the fallback also finds nothing, the answer
+stays a refusal stating the information is not accessible.
+
 The existing WebSocket protocol is unchanged. Generated tokens can arrive
 before the audit completes; the terminal `done.answer` is authoritative and
 replaces the streamed draft in the web client. A failed draft may therefore be

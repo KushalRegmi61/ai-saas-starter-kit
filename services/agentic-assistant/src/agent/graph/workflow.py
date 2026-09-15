@@ -41,7 +41,7 @@ from agent.graph.nodes.generate_final import generate_final
 from agent.graph.nodes.out_of_scope import out_of_scope
 from agent.graph.nodes.routing import route_after_agent, route_after_classify
 from agent.graph.state import AgentState, make_initial_state
-from agent.graph.tool_runner import force_project_search, make_tool_runner
+from agent.graph.tool_runner import force_global_search, force_project_search, make_tool_runner
 from agent.llm import _content_text
 from agent.tracing import get_langchain_callbacks, trace_span
 from agent.types import AskResponse
@@ -75,6 +75,7 @@ def get_agent_graph():
     graph.add_node("agent", agent_node)
     graph.add_node("tools", make_tool_runner(tool_node))
     graph.add_node("force_project_search", force_project_search)
+    graph.add_node("force_global_search", force_global_search)
     graph.add_node("generate_final", generate_final)
 
     graph.set_entry_point("classify_intent")
@@ -95,10 +96,12 @@ def get_agent_graph():
         {
             "tools": "tools",
             "force_project_search": "force_project_search",
+            "force_global_search": "force_global_search",
             "generate": "generate_final",
         },
     )
     graph.add_edge("force_project_search", "tools")
+    graph.add_edge("force_global_search", "tools")
     graph.add_edge("tools", "agent")
     graph.add_edge("generate_final", END)
 

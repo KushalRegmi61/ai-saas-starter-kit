@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from agent.graph.nodes.routing import global_search_completed, project_access_denied
 from agent.graph.state import AgentState
 from agent.llm import invoke_recovery_response
 
@@ -56,12 +57,17 @@ def _recovery_context(state: AgentState, reason: str) -> str:
     """Expose only safe, user-facing outcome details to the recovery model."""
     outcomes = state.get("project_tool_outcomes", [])
     statuses = [str(item.get("status")) for item in outcomes if item.get("status")]
-    if "forbidden" in statuses:
+    if "forbidden" in statuses and not global_search_completed(state):
         return "The requested project information is not accessible to the current user."
     if "ambiguous" in statuses:
         return "More than one authorized project matched the reference, so the user should clarify which project they mean."
     if "not_found" in statuses:
         return "No authorized project matched the reference."
+    if "forbidden" in statuses:
+        return (
+            "The requested project information is not accessible to the current user, "
+            "and no supporting knowledge was found."
+        )
     if reason == "missing_source_citation":
         return "Retrieved knowledge was available, but the draft answer did not cite it safely."
     return "The available project and knowledge results did not support a reliable answer."
@@ -117,7 +123,15 @@ def _audit_grounded_answer(
             for item in resolved_evidence
         ]
         project_names = [name.casefold() for name in project_names if name]
-        if not project_names or not any(name in answer for name in project_names):
+        missing_project_name = not project_names or not any(name in answer for name in project_names)
+        # Denied project access with global knowledge results is the
+        # access-fallback path: the RAG chunks are the evidence, so the
+        # resolved-project-name requirement does not apply. Citation is
+        # still enforced below.
+        fallback_evidence = (
+            project_access_denied(state) and global_search_completed(state) and bool(results)
+        )
+        if missing_project_name and not fallback_evidence:
             return False, "project_scope"
 
     if results and not (cites_source or says_unknown):
