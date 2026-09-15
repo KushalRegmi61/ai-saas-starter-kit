@@ -74,3 +74,44 @@ def test_llm_timeout_is_configurable_and_wired_to_factory(monkeypatch):
 def test_llm_timeout_has_sane_default(monkeypatch):
     monkeypatch.delenv("AGENTIC_ASSISTANT_LLM_TIMEOUT_SECONDS", raising=False)
     assert AgentSettings(_env_file=None).openai_request_timeout_seconds == 120.0
+
+
+def test_model_routing_defaults(monkeypatch):
+    monkeypatch.delenv("AGENTIC_ASSISTANT_FAST_MODEL", raising=False)
+    monkeypatch.delenv("AGENTIC_ASSISTANT_REASONING_MODEL", raising=False)
+    monkeypatch.delenv("OPENAI_CHAT_MODEL", raising=False)
+    settings = AgentSettings(_env_file=None)
+    assert settings.openai_fast_model == "gpt-4o-mini"
+    assert settings.openai_reasoning_model == "gpt-5-nano"
+    assert settings.resolve_fast_model() == "gpt-4o-mini"
+    assert settings.resolve_reasoning_model() == "gpt-5-nano"
+    assert settings.model_for_route("fast") == "gpt-4o-mini"
+    assert settings.model_for_route("reasoning") == "gpt-5-nano"
+
+
+def test_model_routing_env_overrides(monkeypatch):
+    monkeypatch.setenv("AGENTIC_ASSISTANT_FAST_MODEL", "gpt-4o-mini-test")
+    monkeypatch.setenv("AGENTIC_ASSISTANT_REASONING_MODEL", "gpt-5-nano-test")
+    settings = AgentSettings(_env_file=None)
+    assert settings.resolve_fast_model() == "gpt-4o-mini-test"
+    assert settings.resolve_reasoning_model() == "gpt-5-nano-test"
+    assert settings.model_for_route("fast") == "gpt-4o-mini-test"
+    assert settings.model_for_route("reasoning") == "gpt-5-nano-test"
+
+
+def test_legacy_chat_model_is_fallback_when_routes_unset(monkeypatch):
+    monkeypatch.delenv("AGENTIC_ASSISTANT_FAST_MODEL", raising=False)
+    monkeypatch.delenv("AGENTIC_ASSISTANT_REASONING_MODEL", raising=False)
+    monkeypatch.setenv("OPENAI_CHAT_MODEL", "legacy-model")
+    settings = AgentSettings(_env_file=None)
+    assert settings.resolve_fast_model() == "legacy-model"
+    assert settings.resolve_reasoning_model() == "legacy-model"
+
+
+def test_route_vars_win_over_legacy_chat_model(monkeypatch):
+    monkeypatch.setenv("OPENAI_CHAT_MODEL", "legacy-model")
+    monkeypatch.setenv("AGENTIC_ASSISTANT_FAST_MODEL", "fast-model")
+    monkeypatch.setenv("AGENTIC_ASSISTANT_REASONING_MODEL", "reasoning-model")
+    settings = AgentSettings(_env_file=None)
+    assert settings.resolve_fast_model() == "fast-model"
+    assert settings.resolve_reasoning_model() == "reasoning-model"

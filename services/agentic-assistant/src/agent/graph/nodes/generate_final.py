@@ -51,7 +51,7 @@ async def generate_final(
     )
 
     full = ""
-    async for token in stream_response(ctx, config=config):
+    async for token in stream_response(ctx, config=config, route="reasoning"):
         full += token
 
     logger.info(
@@ -69,7 +69,7 @@ async def generate_final(
             f"context_len={len(context) if context else 0}",
         ],
     }
-    return check_grounding(updated)
+    return await check_grounding(updated, config=config)
 
 
 # --------------------------------------------------------------------------- #

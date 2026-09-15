@@ -40,7 +40,7 @@ async def chitchat_respond(
     )
 
     full = ""
-    async for token in stream_response(ctx, config=config):
+    async for token in stream_response(ctx, config=config, route="fast"):
         full += token
 
     logger.info("node chitchat: done answer_len=%d", len(full))
@@ -55,4 +55,4 @@ async def chitchat_respond(
             "chitchat_respond: direct reply (no retrieval)",
         ],
     }
-    return check_grounding(updated)
+    return await check_grounding(updated, config=config)

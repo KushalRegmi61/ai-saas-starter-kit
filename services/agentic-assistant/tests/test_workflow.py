@@ -1,6 +1,7 @@
 """Tests for the ReAct agent graph: routing, grounding, graph structure."""
 
 import json
+from unittest.mock import AsyncMock
 
 import pytest
 from langchain_core.messages import AIMessage, ToolMessage
@@ -93,6 +94,25 @@ def test_route_after_agent_ends_when_no_tool_calls():
     assert route_after_agent(state) == "generate"
 
 
+def test_route_after_agent_forces_selected_project_rag_before_final_answer():
+    state = _state(
+        selected_tools=["get_project_overview", "search_project_knowledge"],
+        messages=[AIMessage(content="The project is on track.")],
+        project_tool_outcomes=[
+            {"tool": "get_project_overview", "status": "resolved", "result_count": 1}
+        ],
+    )
+    assert route_after_agent(state) == "force_project_search"
+
+
+def test_route_after_agent_forces_project_rag_when_model_skips_all_tools():
+    state = _state(
+        selected_tools=["get_project_overview", "search_project_knowledge"],
+        messages=[AIMessage(content="The project is on track.")],
+    )
+    assert route_after_agent(state) == "force_project_search"
+
+
 def test_route_after_agent_ends_at_iteration_cap():
     from agent.graph.nodes.agent import MAX_ITERATIONS
 
@@ -138,39 +158,52 @@ def test_route_after_agent_ends_on_empty_messages():
 # --------------------------------------------------------------------------- #
 
 
-def test_check_grounding_true_when_source_cited():
+@pytest.mark.asyncio
+async def test_check_grounding_true_when_source_cited():
     state = _state(
         answer="Per s.pdf, pto accrues monthly.",
         results=[_result()],
         sources=[{"source": "s.pdf"}],
     )
-    out = check_grounding(state)
+    out = await check_grounding(state)
     assert out["grounded"] is True
 
 
-def test_check_grounding_true_for_abstain():
+@pytest.mark.asyncio
+async def test_check_grounding_true_for_abstain():
     state = _state(
         answer="I do not know.",
         results=[_result()],
         sources=[],
     )
-    assert check_grounding(state)["grounded"] is True
+    assert (await check_grounding(state))["grounded"] is True
 
 
-def test_check_grounding_false_when_no_results():
-    assert check_grounding(_state(answer="hello", results=[], sources=[]))["grounded"] is False
+@pytest.mark.asyncio
+async def test_check_grounding_false_when_no_results(monkeypatch):
+    monkeypatch.setattr(
+        "agent.graph.nodes.grounding.invoke_recovery_response",
+        AsyncMock(return_value="I couldn't find enough accessible information to answer that."),
+    )
+    assert (await check_grounding(_state(answer="hello", results=[], sources=[])))["grounded"] is False
 
 
-def test_needs_tools_without_evidence_gets_warm_rejection():
+@pytest.mark.asyncio
+async def test_needs_tools_without_evidence_gets_warm_rejection(monkeypatch):
     state = _state(
         intent="needs_tools", answer="The answer is definitely X", results=[], sources=[]
     )
-    output = check_grounding(state)
-    assert output["answer"] == OUT_OF_SCOPE_RESPONSE
+    monkeypatch.setattr(
+        "agent.graph.nodes.grounding.invoke_recovery_response",
+        AsyncMock(return_value="I couldn't find enough accessible information to answer that."),
+    )
+    output = await check_grounding(state)
+    assert output["answer"] != OUT_OF_SCOPE_RESPONSE
     assert output["grounded"] is False
 
 
-def test_valid_rag_answer_requires_and_accepts_source_citation():
+@pytest.mark.asyncio
+async def test_valid_rag_answer_requires_and_accepts_source_citation():
     result = _result(text="The handbook says X.", source="handbook.pdf")
     state = _state(
         intent="needs_tools",
@@ -178,12 +211,13 @@ def test_valid_rag_answer_requires_and_accepts_source_citation():
         results=[result],
         sources=[{"source": "handbook.pdf"}],
     )
-    output = check_grounding(state)
+    output = await check_grounding(state)
     assert output["answer"] == state["answer"]
     assert output["grounded"] is True
 
 
-def test_valid_project_answer_requires_resolved_project_name():
+@pytest.mark.asyncio
+async def test_valid_project_answer_requires_resolved_project_name():
     from agent.types import ProjectToolEvidence
 
     state = _state(
@@ -199,12 +233,13 @@ def test_valid_project_answer_requires_resolved_project_name():
             )
         ],
     )
-    output = check_grounding(state)
+    output = await check_grounding(state)
     assert output["answer"] == state["answer"]
     assert output["grounded"] is True
 
 
-def test_answer_with_internal_data_is_replaced():
+@pytest.mark.asyncio
+async def test_answer_with_internal_data_is_replaced(monkeypatch):
     result = _result(text="The handbook says X.", source="handbook.pdf")
     state = _state(
         intent="needs_tools",
@@ -212,8 +247,12 @@ def test_answer_with_internal_data_is_replaced():
         results=[result],
         sources=[{"source": "handbook.pdf"}],
     )
-    output = check_grounding(state)
-    assert output["answer"] == OUT_OF_SCOPE_RESPONSE
+    monkeypatch.setattr(
+        "agent.graph.nodes.grounding.invoke_recovery_response",
+        AsyncMock(return_value="I couldn't find enough accessible information to answer that."),
+    )
+    output = await check_grounding(state)
+    assert output["answer"] != OUT_OF_SCOPE_RESPONSE
     assert "project_id" not in output["answer"]
 
 
@@ -254,12 +293,12 @@ def test_project_questions_force_knowledge_search_with_structured_reads():
     assert context == ["get_project_overview", "search_project_knowledge"]
 
 
-def test_explicit_status_question_can_remain_structured_only():
+def test_explicit_status_question_also_requires_project_knowledge_search():
     selected = _enforce_project_selection(
         "What is the project completion percentage?",
         {"intent": "needs_tools", "tools": []},
     )["tools"]
-    assert selected == ["get_project_overview"]
+    assert selected == ["get_project_overview", "search_project_knowledge"]
 
 
 def test_empty_structured_project_result_forces_knowledge_search():
@@ -267,6 +306,16 @@ def test_empty_structured_project_result_forces_knowledge_search():
         selected_tools=["get_project_activity", "search_project_knowledge"],
         project_tool_outcomes=[
             {"tool": "get_project_activity", "status": "resolved", "result_count": 0}
+        ],
+    )
+    assert _needs_project_search_fallback(state)
+
+
+def test_project_rag_is_forced_even_when_structured_result_is_non_empty():
+    state = _state(
+        selected_tools=["get_project_overview", "search_project_knowledge"],
+        project_tool_outcomes=[
+            {"tool": "get_project_overview", "status": "resolved", "result_count": 1}
         ],
     )
     assert _needs_project_search_fallback(state)
@@ -352,6 +401,12 @@ def test_force_project_search_uses_resolved_project_name():
     output = force_project_search(state)
     assert output["messages"][0].tool_calls[0]["name"] == "search_project_knowledge"
     assert output["messages"][0].tool_calls[0]["args"]["project_reference"] == "Workalay"
+
+
+def test_force_project_search_uses_question_when_project_is_not_resolved():
+    state = _state(question="Tell me about the Agent Knowledge Graph project.")
+    output = force_project_search(state)
+    assert output["messages"][0].tool_calls[0]["args"]["project_reference"] == state["question"]
 
 
 def test_project_empty_evidence_uses_explicit_current_record_semantics():

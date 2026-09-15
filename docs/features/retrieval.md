@@ -49,6 +49,38 @@ Caller passes `AccessFilter(departments, max_access_level)`; rag only enforces. 
 
 `QDRANT_URL/QDRANT_API_KEY/QDRANT_COLLECTION`, `AGENTIC_ASSISTANT_DATABASE_URL` (Neon + pgvector), `OPENAI_API_KEY/BASE_URL`, `AGENTIC_ASSISTANT_JWT_SECRET`, and the agentic-assistant memory/WebSocket settings. Unconfigured → `503`. The chat socket requires a short-lived assistant WebSocket ticket and stores conversation turns in the same Neon database.
 
+### Model routing (two-tier, env-swappable)
+
+The assistant uses two explicit model routes. Provider, base URL, timeout,
+retries, tracing callbacks, and streaming behavior remain shared — only the
+model name changes per route:
+
+- Fast (`AGENTIC_ASSISTANT_FAST_MODEL`, default `gpt-4o-mini`): intent
+  classification (`classify_intent`), chitchat (`chitchat_respond`), and
+  recovery/unsupported responses (`invoke_recovery_response`, used by
+  `out_of_scope` and grounding audits).
+- Reasoning (`AGENTIC_ASSISTANT_REASONING_MODEL`, default `gpt-5-nano`):
+  tool selection/reasoning (ReAct `agent` node via `invoke_with_tools`) and
+  final grounded answers (`generate_final`).
+
+Examples:
+
+```bash
+AGENTIC_ASSISTANT_FAST_MODEL=gpt-4o-mini
+AGENTIC_ASSISTANT_REASONING_MODEL=gpt-5-nano
+```
+
+`OPENAI_CHAT_MODEL` remains as a legacy fallback when a route variable is
+unset; prefer the two route variables for new deployments. The removed
+`AGENTIC_ASSISTANT_RECOVERY_MODEL` is superseded by the fast route. The
+selected route and resolved model name are logged per LLM call (no
+credentials or prompt contents). Model routing is observable through logs
+and code-level configuration, not exposed as a user-facing quality score.
+
+Acceptance flow: a greeting performs only a fast-model response; a project
+question uses the fast classifier, then the reasoning model for tool use and
+final synthesis; a failed/unsupported response uses the fast recovery model.
+
 ## Past chats (Option A: derived preview, no migration)
 
 - List derives each row from storage on every call: `assistant_conversations` filtered by `owner_subject`, ordered `updated_at DESC`, plus per-chat assistant-row count (`turn_count`) and first `user` message cut to 120 chars (`preview`). No title column, no backfill.

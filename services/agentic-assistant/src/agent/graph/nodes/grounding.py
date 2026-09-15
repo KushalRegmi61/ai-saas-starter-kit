@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import logging
 
-from agent.graph.nodes.out_of_scope import OUT_OF_SCOPE_RESPONSE
 from agent.graph.state import AgentState
+from agent.llm import invoke_recovery_response
 
 logger = logging.getLogger(__name__)
 
 
-def check_grounding(state: AgentState) -> AgentState:
+async def check_grounding(state: AgentState, config=None) -> AgentState:
     logger.debug("node grounding: start answer_len=%d", len(state.get("answer", "")))
     answer_text = state["answer"]
     answer = answer_text.lower()
@@ -23,7 +23,11 @@ def check_grounding(state: AgentState) -> AgentState:
         grounded, audit_reason = _audit_grounded_answer(state, answer, cites_source, says_unknown)
         if not grounded:
             logger.warning("node grounding: replacing answer audit_reason=%s", audit_reason)
-            answer = OUT_OF_SCOPE_RESPONSE
+            answer = await invoke_recovery_response(
+                question=state["question"],
+                context=_recovery_context(state, audit_reason),
+                config=config,
+            )
         else:
             answer = answer_text
     else:
@@ -46,6 +50,21 @@ def check_grounding(state: AgentState) -> AgentState:
             f"grounding_check grounded={grounded} reason={audit_reason}",
         ],
     }
+
+
+def _recovery_context(state: AgentState, reason: str) -> str:
+    """Expose only safe, user-facing outcome details to the recovery model."""
+    outcomes = state.get("project_tool_outcomes", [])
+    statuses = [str(item.get("status")) for item in outcomes if item.get("status")]
+    if "forbidden" in statuses:
+        return "The requested project information is not accessible to the current user."
+    if "ambiguous" in statuses:
+        return "More than one authorized project matched the reference, so the user should clarify which project they mean."
+    if "not_found" in statuses:
+        return "No authorized project matched the reference."
+    if reason == "missing_source_citation":
+        return "Retrieved knowledge was available, but the draft answer did not cite it safely."
+    return "The available project and knowledge results did not support a reliable answer."
 
 
 _INTERNAL_DATA_PATTERNS = (

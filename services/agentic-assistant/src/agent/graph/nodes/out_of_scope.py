@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from agent.graph.state import AgentState
+from agent.llm import invoke_recovery_response
 
 OUT_OF_SCOPE_RESPONSE = (
     "I'm built to help with project progress, status, features, blockers, "
@@ -12,16 +13,21 @@ OUT_OF_SCOPE_RESPONSE = (
 )
 
 
-def out_of_scope(state: AgentState) -> dict:
-    """Return a safe, stable rejection without another model call."""
+async def out_of_scope(state: AgentState, config=None) -> dict:
+    """Generate a concise, low-cost response for unsupported requests."""
+    answer = await invoke_recovery_response(
+        question=state["question"],
+        context="The request is outside the assistant's supported project and enterprise-knowledge scope.",
+        config=config,
+    )
     return {
         **state,
-        "answer": OUT_OF_SCOPE_RESPONSE,
+        "answer": answer,
         "sources": [],
         "results": [],
         "grounded": True,
         "workflow_steps": [
             *state.get("workflow_steps", []),
-            "out_of_scope: deterministic rejection",
+            "out_of_scope: recovery response",
         ],
     }

@@ -93,7 +93,7 @@ async def classify_intent(
         # No history/summary here — already embedded in system_prompt above
     )
 
-    raw = await invoke_response(ctx, config=config)
+    raw = await invoke_response(ctx, config=config, route="fast")
     parsed = _enforce_project_selection(state["question"], _parse_response(raw))
 
     logger.info(
@@ -183,12 +183,6 @@ _PROJECT_SIGNALS = re.compile(
     r"documentation|decision|context|workstream|work update|history)\b",
     re.IGNORECASE,
 )
-_STRUCTURED_ONLY_SIGNALS = re.compile(
-    r"\b(status|completion|complete|percent|percentage|count|counts)\b",
-    re.IGNORECASE,
-)
-
-
 def _enforce_project_selection(question: str, parsed: dict) -> dict:
     """Make project routing deterministic after the classifier responds."""
     if parsed.get("intent") == "out_of_scope":
@@ -221,11 +215,10 @@ def _enforce_project_selection(question: str, parsed: dict) -> dict:
     if primary not in selected:
         selected.append(primary)
 
-    pure_structured = bool(_STRUCTURED_ONLY_SIGNALS.search(question)) and not any(
-        term in lowered
-        for term in ("about", "context", "documentation", "decision", "work", "progress")
-    )
-    if not pure_structured and "search_project_knowledge" not in selected:
+    # Every project question gets the knowledge search. Structured records are
+    # authoritative for current state, while RAG may contain the explanation,
+    # decisions, and documents that are absent from project tables.
+    if "search_project_knowledge" not in selected:
         selected.append("search_project_knowledge")
 
     return {"intent": "needs_tools", "tools": selected}

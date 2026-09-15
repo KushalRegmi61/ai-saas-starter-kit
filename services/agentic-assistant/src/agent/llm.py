@@ -2,9 +2,19 @@
 
 Single source of truth for all LLM calls in the agent. Three patterns:
 
-  stream_response(ctx)               — async token streaming (chitchat, generate_final)
-  invoke_response(ctx)               — single async call, no streaming (classify)
-  invoke_with_tools(messages, tools) — async tool-calling (agent ReAct node)
+  stream_response(ctx, route=...)        — async token streaming (chitchat, generate_final)
+  invoke_response(ctx, route=...)        — single async call, no streaming (classify)
+  invoke_with_tools(messages, tools, route=...) — async tool-calling (agent ReAct node)
+
+Model routing is two-tier and env-swappable:
+
+  fast      → intent classification, chitchat, recovery responses
+              (AGENTIC_ASSISTANT_FAST_MODEL, default gpt-4o-mini)
+  reasoning → tool selection/reasoning and final grounded answers
+              (AGENTIC_ASSISTANT_REASONING_MODEL, default gpt-5-nano)
+
+Provider, base URL, timeout, retries, tracing callbacks, and streaming
+behavior remain shared — only the model name changes per route.
 
 All calls are async so nodes never block the event loop. When nodes use
 these helpers, LangGraph's astream_events() picks up on_chat_model_stream
@@ -24,6 +34,7 @@ Postponed annotations break InjectedState detection in ToolNode.
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from typing import Literal
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
@@ -32,6 +43,15 @@ from langchain_openai import ChatOpenAI
 from agent.config import get_agent_settings
 
 logger = logging.getLogger(__name__)
+
+# --------------------------------------------------------------------------- #
+# Model routing                                                               #
+# --------------------------------------------------------------------------- #
+
+ModelRoute = Literal["fast", "reasoning"]
+
+FAST_ROUTE: ModelRoute = "fast"
+REASONING_ROUTE: ModelRoute = "reasoning"
 
 # --------------------------------------------------------------------------- #
 # System prompts                                                               #
@@ -97,6 +117,7 @@ async def stream_response(
     *,
     config: RunnableConfig | None = None,
     callbacks: list | None = None,
+    route: ModelRoute = "reasoning",
 ) -> AsyncIterator[str]:
     """Stream tokens for any generation scenario.
 
@@ -114,11 +135,16 @@ async def stream_response(
       ctx.context is None → _CHITCHAT_SYSTEM  (conversational)
       ctx.context is str  → _GROUNDED_SYSTEM  (answer from retrieved context)
       ctx.system_prompt   → explicit override  (future custom agents)
+
+    Route selects the model tier explicitly:
+      "fast" → chitchat_respond; "reasoning" → generate_final (default).
     """
     messages = _build_messages(ctx)
-    llm = _chat_model()
+    llm = _chat_model(route=route)
     logger.info(
-        "llm stream start: question_len=%d context_len=%d history_turns=%d",
+        "llm stream start: route=%s model=%s question_len=%d context_len=%d history_turns=%d",
+        route,
+        _resolved_model_name(route),
         len(ctx.question),
         len(ctx.context) if ctx.context else 0,
         len(ctx.history),
@@ -144,16 +170,19 @@ async def invoke_response(
     *,
     config: RunnableConfig | None = None,
     callbacks: list | None = None,
+    route: ModelRoute = "fast",
 ) -> str:
     """Single async LLM call, no streaming. Returns the full response string.
 
     Use for intent classification and other single-shot decisions where
-    streaming the output to the client is wrong.
+    streaming the output to the client is wrong. Defaults to the fast route.
     """
     messages = _build_messages(ctx)
-    llm = _chat_model()
+    llm = _chat_model(route=route)
     logger.info(
-        "llm invoke start: question_len=%d has_system_override=%s",
+        "llm invoke start: route=%s model=%s question_len=%d has_system_override=%s",
+        route,
+        _resolved_model_name(route),
         len(ctx.question),
         bool(ctx.system_prompt),
     )
@@ -170,20 +199,67 @@ async def invoke_response(
         raise
 
 
+async def invoke_recovery_response(
+    *,
+    question: str,
+    context: str,
+    config: RunnableConfig | None = None,
+) -> str:
+    """Generate a short recovery response on the fast route.
+
+    Recovery stays inside the same two-tier routing policy — there is no
+    separate third model role. Resolves AGENTIC_ASSISTANT_FAST_MODEL.
+    """
+    system_prompt = (
+        "You write concise recovery messages for an enterprise project assistant. "
+        "Use only the supplied outcome. Do not invent project facts, IDs, tools, "
+        "permissions, or sources. Explain the limitation warmly, suggest what the "
+        "user can ask next, and keep the response to two short sentences."
+    )
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=f"User question: {question}\n\nOutcome: {context}"),
+    ]
+    logger.info(
+        "llm recovery invoke start route=%s model=%s",
+        FAST_ROUTE,
+        _resolved_model_name(FAST_ROUTE),
+    )
+    try:
+        response = await _chat_model(route=FAST_ROUTE, streaming=False).ainvoke(
+            messages,
+            config=_llm_config(config, None),
+        )
+        text = _content_text(response.content).strip()
+        if text:
+            return text
+    except Exception:
+        logger.exception("llm recovery invoke failed")
+    return "I couldn't find enough accessible information to answer that. Feel free to ask about another project or its documented work."
+
+
 async def invoke_with_tools(
     messages: list[BaseMessage],
     tools: list,
     *,
     config: RunnableConfig | None = None,
     callbacks: list | None = None,
+    route: ModelRoute = "reasoning",
 ) -> AIMessage:
     """Async LLM call with tools bound. Returns the full AIMessage.
 
     Used by the agent ReAct node. The returned AIMessage may contain
     tool_calls (→ Action) or a direct content string (→ Final Answer).
+    Always runs on the reasoning route (tool selection/reasoning tier).
     """
-    logger.info("llm tool call start: messages=%d tools=%d", len(messages), len(tools))
-    llm = _chat_model().bind_tools(tools)
+    logger.info(
+        "llm tool call start: route=%s model=%s messages=%d tools=%d",
+        route,
+        _resolved_model_name(route),
+        len(messages),
+        len(tools),
+    )
+    llm = _chat_model(route=route).bind_tools(tools)
     try:
         response = await llm.ainvoke(
             messages,
@@ -203,18 +279,38 @@ async def invoke_with_tools(
 # Internal helpers (also exported for use in common.py formatters)            #
 # --------------------------------------------------------------------------- #
 
-def _chat_model() -> ChatOpenAI:
-    """LLM factory — single construction point. Tests patch this."""
+def _resolved_model_name(route: ModelRoute) -> str:
+    """Best-effort resolved model name for logging (never raises)."""
+    try:
+        return get_agent_settings().model_for_route(route)
+    except Exception:
+        return "unknown"
+
+
+def _chat_model(
+    *,
+    model_name: str | None = None,
+    route: ModelRoute = "reasoning",
+    streaming: bool = True,
+) -> ChatOpenAI:
+    """LLM factory — single construction point. Tests patch this.
+
+    Route selects the configured tier (fast vs reasoning); an explicit
+    model_name still wins for one-off overrides. Provider, base URL,
+    timeout, retries, and streaming behavior stay shared.
+    """
     settings = get_agent_settings()
+    resolved = model_name or settings.model_for_route(route)
     logger.debug(
-        "chat model build: model=%s base_url_configured=%s",
-        settings.openai_chat_model,
+        "chat model build: route=%s model=%s base_url_configured=%s",
+        route,
+        resolved,
         bool(settings.openai_base_url),
     )
     kwargs: dict = {
-        "model": settings.openai_chat_model,
+        "model": resolved,
         "temperature": 0,
-        "streaming": True,
+        "streaming": streaming,
         "api_key": settings.openai_api_key,
         "request_timeout": settings.openai_request_timeout_seconds,
         "max_retries": settings.openai_retry_attempts,

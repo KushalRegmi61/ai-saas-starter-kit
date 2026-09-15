@@ -52,8 +52,10 @@ Guidelines:
 - Cite sources from the context in your final answer
 - If the knowledge base does not contain an answer, say so honestly
 - Do not fabricate information not present in tool results
-- For project questions, use the selected structured project tool and
-  search_project_knowledge before answering whenever both are available.
+- For project questions, you MUST call search_project_knowledge before
+  answering whenever it is selected. This is mandatory even when a structured
+  project tool already returned a non-empty result or the question asks only
+  for status, completion, or counts.
 - If a structured project tool returns an empty collection, continue to the
   selected knowledge search instead of concluding that nothing is known.
 - Use the user's project name as project_reference and the complete question
@@ -98,7 +100,7 @@ async def agent_node(state: AgentState, config: Optional[RunnableConfig] = None)
         messages = [SystemMessage(content=system), *messages]
 
     response = await invoke_with_tools(
-        messages, tool_fns, config=config
+        messages, tool_fns, config=config, route="reasoning"
     )
 
     usage = getattr(response, "usage_metadata", None)

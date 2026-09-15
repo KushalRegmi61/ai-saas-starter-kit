@@ -12,7 +12,17 @@ logger = logging.getLogger(__name__)
 class AgentSettings(BaseSettings):
     openai_api_key: str = ""
     openai_base_url: str = ""
+    # Legacy chat-model configuration. Preserved during migration so existing
+    # OPENAI_CHAT_MODEL deployments keep working. Preferred interface is now
+    # AGENTIC_ASSISTANT_FAST_MODEL / AGENTIC_ASSISTANT_REASONING_MODEL below.
+    # When a new route variable is unset, the legacy value is used as fallback.
     openai_chat_model: str = "gpt-4o-mini"
+    openai_fast_model: str = Field(
+        default="gpt-4o-mini", validation_alias="AGENTIC_ASSISTANT_FAST_MODEL"
+    )
+    openai_reasoning_model: str = Field(
+        default="gpt-5-nano", validation_alias="AGENTIC_ASSISTANT_REASONING_MODEL"
+    )
     openai_retry_attempts: int = 3
     openai_retry_min_wait: float = 1.0
     openai_retry_max_wait: float = 10.0
@@ -78,13 +88,39 @@ class AgentSettings(BaseSettings):
         "extra": "ignore",
     }
 
+    def resolve_fast_model(self) -> str:
+        """Fast route model: new var wins, legacy chat model is the fallback."""
+        if "openai_fast_model" not in self.model_fields_set and (
+            "openai_chat_model" in self.model_fields_set
+        ):
+            return self.openai_chat_model
+        return self.openai_fast_model
+
+    def resolve_reasoning_model(self) -> str:
+        """Reasoning route model: new var wins, legacy chat model is fallback."""
+        if "openai_reasoning_model" not in self.model_fields_set and (
+            "openai_chat_model" in self.model_fields_set
+        ):
+            return self.openai_chat_model
+        return self.openai_reasoning_model
+
+    def model_for_route(self, route: str) -> str:
+        if route == "fast":
+            return self.resolve_fast_model()
+        if route == "reasoning":
+            return self.resolve_reasoning_model()
+        raise ValueError(f"unknown model route: {route!r}")
+
 
 @lru_cache
 def get_agent_settings() -> AgentSettings:
     settings = AgentSettings()
     logger.info(
-        "agent settings loaded: model=%s tenant=%s openai_configured=%s "
+        "agent settings loaded: fast_model=%s reasoning_model=%s "
+        "legacy_chat_model=%s tenant=%s openai_configured=%s "
         "langfuse_configured=%s service_token_configured=%s jwt_configured=%s db_configured=%s",
+        settings.resolve_fast_model(),
+        settings.resolve_reasoning_model(),
         settings.openai_chat_model,
         settings.default_tenant,
         bool(settings.openai_api_key),

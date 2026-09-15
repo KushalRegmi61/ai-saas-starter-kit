@@ -207,13 +207,10 @@ def force_project_search(state: AgentState) -> dict:
     """Create a bounded fallback call when structured data was empty."""
     project = state.get("resolved_project") or {}
     reference = project.get("name", "") if isinstance(project, dict) else project.name
-    if not reference:
-        return {
-            "workflow_steps": [
-                *state.get("workflow_steps", []),
-                "project_search_fallback_skipped",
-            ]
-        }
+    # The project tool resolves natural-language references server-side. This
+    # preserves a deterministic RAG call even when the model tried to answer
+    # without first calling a structured project tool.
+    reference = reference or state["question"]
     return {
         "messages": [
             AIMessage(

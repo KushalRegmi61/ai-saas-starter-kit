@@ -128,6 +128,20 @@ variables, especially `OPENAI_API_KEY`, `AGENTIC_ASSISTANT_DATABASE_URL`,
 `AGENTIC_ASSISTANT_CORS_ORIGINS`. `QDRANT_URL`, `QDRANT_API_KEY`, and the
 Langfuse variables are needed when those integrations are enabled.
 
+Model routing is two-tier and env-swappable: `AGENTIC_ASSISTANT_FAST_MODEL`
+(default `gpt-4o-mini`) covers intent classification, chitchat, and recovery
+responses, while `AGENTIC_ASSISTANT_REASONING_MODEL` (default `gpt-5-nano`)
+covers tool selection/reasoning and final grounded answers. Example:
+
+```bash
+AGENTIC_ASSISTANT_FAST_MODEL=gpt-4o-mini
+AGENTIC_ASSISTANT_REASONING_MODEL=gpt-5-nano
+```
+
+`OPENAI_CHAT_MODEL` remains as a legacy fallback when a route variable is
+unset. Only the model name changes per route — provider, base URL, timeout,
+retries, tracing, and streaming stay shared.
+
 ## 3. Supabase (hosted)
 
 1. Create a project at [supabase.com](https://supabase.com).

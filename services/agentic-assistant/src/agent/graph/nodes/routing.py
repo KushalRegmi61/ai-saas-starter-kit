@@ -59,6 +59,10 @@ def route_after_agent(state: AgentState) -> str:
     last = messages[-1]
     has_tool_calls = isinstance(last, AIMessage) and bool(getattr(last, "tool_calls", []))
 
+    if not has_tool_calls and _needs_project_search_fallback(state):
+        logger.info("route: agent -> force_project_search before final answer")
+        return "force_project_search"
+
     if not has_tool_calls:
         logger.info("route: agent -> generate (no tool calls)")
         return "generate"
@@ -78,7 +82,7 @@ def route_after_agent(state: AgentState) -> str:
         )
         return "generate"
 
-    if _needs_project_search_fallback(state):
+    if _needs_project_search_fallback(state) and state.get("tool_call_count", 0) >= MAX_ITERATIONS:
         logger.info("route: agent -> force_project_search after empty structured result")
         return "force_project_search"
 
@@ -87,15 +91,13 @@ def route_after_agent(state: AgentState) -> str:
 
 
 def _needs_project_search_fallback(state: AgentState) -> bool:
+    """Guarantee the selected project RAG tool runs before final generation."""
     selected = state.get("selected_tools", [])
     if "search_project_knowledge" not in selected:
         return False
     outcomes = state.get("project_tool_outcomes", [])
-    if not outcomes or any(item.get("tool") == "search_project_knowledge" for item in outcomes):
+    if any(item.get("tool") == "search_project_knowledge" for item in outcomes):
         return False
-    return any(
-        item.get("tool", "").startswith("get_project_")
-        and item.get("status") == "resolved"
-        and item.get("result_count", 0) == 0
-        for item in outcomes
-    )
+    if not outcomes:
+        return True
+    return any(item.get("tool", "").startswith("get_project_") for item in outcomes)
