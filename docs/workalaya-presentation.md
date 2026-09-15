@@ -41,32 +41,78 @@ and conversational view of project health.
 
 ```mermaid
 flowchart LR
-    DEV[Authenticated Users] --> WEB[Assistant Web UI]
-    WEB --> AUTH[Assistant Authentication<br/>JWT + WebSocket Ticket]
-    AUTH --> CHAT[Async WebSocket Chat]
+    USER[Authenticated User] --> WEB[Assistant Web UI]
+    WEB --> WEBJWT[Assistant Web JWT<br/>web session / API access]
+    WEBJWT --> WSTICKET[Short-Lived WebSocket Ticket<br/>first-frame chat authentication]
+    WSTICKET --> AGENT[Agentic AI Orchestrator]
 
-    CHAT --> GRAPH[LangGraph Agent]
-    GRAPH --> CLASSIFY[Intent Classification]
-    CLASSIFY --> LOOP[Bounded Agent Loop]
+    subgraph ROUTING[Model Routing]
+        AGENT --> ROUTER[Intent + Request Routing]
+        ROUTER -->|chitchat / recovery| FAST[Fast Model<br/>gpt-4o-mini default]
+        ROUTER -->|project or knowledge question| REASON[Reasoning Model<br/>gpt-5-nano default]
+    end
 
-    LOOP --> PROJECT[Project Intelligence Tools]
-    PROJECT --> PG[(Neon/PostgreSQL<br/>Projects, Features, Blockers,<br/>Updates, Audit Events)]
+    subgraph KNOWLEDGE[Authorized Tools and Knowledge]
+        REASON --> TOOLS[Bounded Tool-Using Agent<br/>LangGraph + project tools]
+        TOOLS --> STATE[Structured Project State<br/>Neon/PostgreSQL]
+        TOOLS --> FILTER[Server-Derived AccessFilter<br/>project scope + role scope<br/>LLM cannot supply scope]
+        FILTER --> RAG[Hybrid RAG]
+        RAG --> VECTOR[Qdrant vectors]
+        RAG --> BM25[Neon registry + BM25/cache]
+        VECTOR --> FUSION[Retrieval Fusion / RRF]
+        BM25 --> FUSION
+        STATE --> CONTEXT[Project Facts + Documentation Evidence]
+        FUSION --> CONTEXT
+    end
 
-    LOOP --> SEARCH[Knowledge Search]
-    SEARCH --> RBAC[Role-Based Access Filter]
-    RBAC --> QDRANT[(Qdrant<br/>Vector Retrieval)]
-    RBAC --> NEON[(Neon<br/>Document Registry + BM25)]
-    QDRANT --> FUSION[Hybrid Fusion / RRF]
-    NEON --> FUSION
-    FUSION --> ANSWER[Grounded Answer]
+    subgraph TRUST[Guardrails and Delivery]
+        CONTEXT --> SYNTH[Grounded Answer Synthesis<br/>reasoning model]
+        SYNTH --> GUARD[Guardrails<br/>authorization, grounding, recovery]
+        FAST --> GUARD
+        GUARD --> STREAM[Safe WebSocket Streaming]
+        AGENT -.-> TRACE[Langfuse Tracing]
+    end
 
-    PG --> MEMORY[Conversation Memory + History]
-    GRAPH --> TRACE[Langfuse Tracing]
-    CHAT --> STREAM[Immediate Token Streaming]
-    STREAM --> WEB
-    PG --> DASH[Project Dashboards]
+    subgraph OUTPUTS[Business Outputs]
+        STREAM --> ANSWER[Evidence-Backed Conversation]
+        STATE --> DASH[Project Dashboards]
+    end
+
+    ANSWER --> WEB
     DASH --> WEB
+    WEBJWT --> FILTER
+
+    DEV[Developer Coding Agents] -.->|project-scoped MCP updates| STATE
+    UPLOAD[Document Ingestion] -.->|chunk + embed| RAG
+
+    classDef ai fill:#4c1d95,stroke:#a78bfa,color:#fff,stroke-width:2px;
+    classDef model fill:#1d4ed8,stroke:#93c5fd,color:#fff,stroke-width:2px;
+    classDef data fill:#14532d,stroke:#86efac,color:#fff,stroke-width:2px;
+    classDef security fill:#92400e,stroke:#fbbf24,color:#fff,stroke-width:2px;
+    classDef ops fill:#334155,stroke:#cbd5e1,color:#fff,stroke-width:1px;
+    classDef output fill:#0f766e,stroke:#5eead4,color:#fff,stroke-width:2px;
+
+    class AGENT,ROUTER,TOOLS,SYNTH,GUARD ai;
+    class FAST,REASON model;
+    class STATE,RAG,VECTOR,BM25,FUSION,CONTEXT data;
+    class WEBJWT,WSTICKET,FILTER security;
+    class TRACE,STREAM ops;
+    class WEB,ANSWER,DASH output;
 ```
+
+### Figure legend
+
+| Visual treatment | Meaning |
+| --- | --- |
+| Purple | Agentic AI orchestration, tools, synthesis, and guardrails |
+| Blue | Fast versus reasoning model routes |
+| Green | Structured project state and hybrid RAG evidence |
+| Amber | Authentication and server-derived authorization |
+| Slate | Streaming and observability |
+| Teal | User-facing outputs |
+
+Solid arrows represent the normal execution path. Dashed arrows represent
+conditional, fallback, or external-input paths.
 
 ### Delivered extensions shown by the architecture
 
@@ -74,6 +120,11 @@ flowchart LR
 - Project dashboards and normalized project state.
 - Features, blockers, updates, and audit events in PostgreSQL.
 - Hybrid RAG using Qdrant and Neon.
+- Two-tier model routing: a fast model for classification, chitchat, and
+  recovery; a reasoning model for tool selection and final grounded answers.
+- Bounded LangGraph ReAct execution with mandatory project knowledge search,
+  grounding checks, and safe recovery responses.
+- Separation between authoritative project tools and documentation evidence.
 - Persistent conversation memory and history.
 - Async WebSocket streaming of workflow steps and generated tokens.
 - Langfuse tracing for agent and retrieval execution.
@@ -84,14 +135,21 @@ flowchart LR
 - RAG supplies documentation context and evidence.
 - RBAC filters are derived server-side from verified roles.
 - The model cannot choose its own project or access scope.
+- Project references are resolved against the caller's authorized projects.
 - Agent loops, tool calls, and LLM requests are bounded.
+- Fast and reasoning models are environment-swappable through
+  `AGENTIC_ASSISTANT_FAST_MODEL` and `AGENTIC_ASSISTANT_REASONING_MODEL`.
 
 ### Presenter context
 
-The important separation is between facts and context. Project tools read
-structured state, while the RAG tool finds supporting internal documentation.
-The assistant combines them only after the server has resolved the caller's
-access filter.
+The important separation is between facts, context, and control flow. The fast
+model classifies the request and handles conversational recovery. The bounded
+ReAct loop uses the reasoning model to select authorized tools. Project tools
+read authoritative structured state, while the RAG tool finds supporting
+internal documentation through the server-derived access filter. The final
+reasoning model synthesizes both sources, then a grounding audit either emits
+the evidence-backed answer or invokes a fast recovery response. The LLM never
+creates the caller's project scope or authorization filter.
 
 ## Slide 3 — Project-Scoped MCP Integration
 
