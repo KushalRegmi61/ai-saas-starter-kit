@@ -8,7 +8,7 @@ export default function HomePage() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-slate-950 text-slate-400 text-xs">
+      <div className="flex-1 flex items-center justify-center bg-white text-slate-500 text-xs">
         Initializing Agentic Assistant...
       </div>
     );

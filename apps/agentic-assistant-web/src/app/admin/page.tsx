@@ -8,7 +8,7 @@ export default function AdminPage() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-slate-950 text-slate-400 text-xs">
+      <div className="flex-1 flex items-center justify-center bg-white text-slate-500 text-xs">
         Loading Admin Console...
       </div>
     );
@@ -16,8 +16,8 @@ export default function AdminPage() {
 
   if (!isAdmin) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-slate-950 text-slate-400 text-xs p-6 text-center space-y-2">
-        <h2 className="text-rose-400 font-semibold text-sm">Access Denied</h2>
+      <div className="flex-1 flex flex-col items-center justify-center bg-white text-slate-500 text-xs p-6 text-center space-y-2">
+        <h2 className="text-red-600 font-semibold text-sm">Access Denied</h2>
         <p>You must have an Admin role to view the Assistant Admin Console.</p>
       </div>
     );

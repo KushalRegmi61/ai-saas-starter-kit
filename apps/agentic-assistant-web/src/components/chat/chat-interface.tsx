@@ -124,7 +124,7 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
   };
 
   return (
-    <div className="flex h-full bg-slate-950 text-slate-100 font-sans">
+    <div className="flex h-full bg-white text-slate-900 font-sans">
       <ChatHistoryPanel
         summaries={summaries}
         activeId={conversationId}
@@ -138,14 +138,14 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
       />
       <div className="flex flex-col flex-1 min-w-0 h-full">
       {/* ── Header ─────────────────────────────────────────────── */}
-      <header className="px-5 py-3.5 border-b border-slate-800/80 bg-slate-900/70 backdrop-blur-md flex items-center justify-between shrink-0 gap-4">
+      <header className="px-5 py-3.5 border-b border-slate-200 bg-white/90 backdrop-blur-md flex items-center justify-between shrink-0 gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <button
             type="button"
             onClick={() => setHistoryOpen((v) => !v)}
             title={historyOpen ? "Hide past chats" : "Show past chats"}
             aria-label={historyOpen ? "Hide past chats" : "Show past chats"}
-            className="hidden md:flex p-2 rounded-lg border border-slate-800 hover:bg-slate-800/80 text-slate-400 hover:text-slate-200 transition-all shrink-0"
+            className="hidden md:flex p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-900 transition-all shrink-0"
           >
             {historyOpen ? (
               <PanelLeftClose className="w-4 h-4" />
@@ -154,7 +154,7 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
             )}
           </button>
           {/* Logo */}
-          <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+          <div className="w-9 h-9 shrink-0 rounded-xl bg-[#e11d24] flex items-center justify-center shadow-lg shadow-red-500/25">
             <Bot className="w-5 h-5 text-white" />
           </div>
 
@@ -182,7 +182,7 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
           <button
             type="button"
             onClick={handleNewChat}
-            className="p-2 rounded-lg border border-slate-800 hover:bg-slate-800/80 text-slate-400 hover:text-slate-200 text-xs font-medium transition-all flex items-center gap-1.5"
+            className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-900 text-xs font-medium transition-all flex items-center gap-1.5"
           >
             <PlusCircle className="w-4 h-4" />
             <span className="hidden sm:inline">New chat</span>
@@ -192,12 +192,12 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
 
       {/* ── Reopen failure (past-chat click) ─────────────────── */}
       {selectError && (
-        <div className="px-5 py-2 bg-rose-950/40 border-b border-rose-800/30 text-xs text-rose-300 shrink-0 flex items-center gap-2">
+        <div className="px-5 py-2 bg-red-50 border-b border-red-200 text-xs text-red-700 shrink-0 flex items-center gap-2">
           <span>⚠ {selectError}</span>
           <button
             type="button"
             onClick={() => setSelectError(null)}
-            className="ml-auto underline underline-offset-2 hover:text-rose-100"
+            className="ml-auto underline underline-offset-2 hover:text-red-900"
           >
             Dismiss
           </button>
@@ -208,15 +208,16 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
       <div className="flex-1 overflow-y-auto chat-scroll px-4 sm:px-6 py-6 space-y-6">
         {messages.length === 0 ? (
           /* Empty state */
-          <div className="h-full flex flex-col items-center justify-center text-center max-w-sm mx-auto space-y-5 pb-16">
+            <div className="h-full flex flex-col items-center justify-center text-center max-w-sm mx-auto space-y-5 pb-16 grid-background">
             <div className="relative">
-              <div className="w-16 h-16 rounded-2xl bg-indigo-950/60 border border-indigo-800/40 flex items-center justify-center">
-                <Sparkles className="w-7 h-7 text-indigo-400" />
+              <div className="w-16 h-16 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center">
+                <Sparkles className="w-7 h-7 text-red-600" />
               </div>
-              <div className="absolute -inset-2 rounded-3xl bg-indigo-500/10 blur-xl" />
+              <div className="absolute -inset-2 rounded-3xl bg-red-500/10 blur-xl" />
             </div>
             <div>
-              <h3 className="text-slate-100 font-semibold text-base mb-2">
+              <p className="eyebrow mb-2">Knowledge Assistant</p>
+              <h3 className="text-slate-900 font-semibold text-base mb-2 font-display">
                 Ask the Knowledge Assistant
               </h3>
               <p className="text-xs text-slate-500 leading-relaxed">
@@ -236,7 +237,7 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
                   onClick={() => {
                     setPrompt(hint);
                   }}
-                  className="px-3 py-1.5 rounded-full text-xs bg-slate-800/60 border border-slate-700/60 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                  className="px-3 py-1.5 rounded-full text-xs bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-sm transition-colors"
                 >
                   {hint}
                 </button>
@@ -258,8 +259,8 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
               <div
                 className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
                   msg.role === "user"
-                    ? "bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/20"
-                    : "bg-slate-800/80 text-indigo-400 border border-slate-700/60"
+                    ? "bg-[#e11d24] text-white shadow-md shadow-red-500/20"
+                    : "bg-slate-100 text-red-600 border border-slate-200"
                 }`}
               >
                 {msg.role === "user" ? (
@@ -274,8 +275,8 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
                 <div
                   className={`px-4 py-3 rounded-2xl text-sm leading-relaxed break-words ${
                     msg.role === "user"
-                      ? "bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-tr-sm shadow-md shadow-indigo-500/20"
-                      : "bg-slate-900/80 border border-slate-800/70 text-slate-200 rounded-tl-sm"
+                      ? "bg-[#e11d24] text-white rounded-tr-sm shadow-md shadow-red-500/20"
+                      : "bg-white border border-slate-200 text-slate-700 rounded-tl-sm shadow-sm"
                   }`}
                 >
                   {/* Thinking state — no content yet, streaming */}
@@ -285,13 +286,13 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
                     <>
                       <MarkdownMessage content={msg.content} />
                       {msg.isStreaming && (
-                        <span className="blink inline-block ml-0.5 -mb-0.5 w-[2px] h-[1em] bg-indigo-400 rounded-sm" />
+                        <span className="blink inline-block ml-0.5 -mb-0.5 w-[2px] h-[1em] bg-red-500 rounded-sm" />
                       )}
                     </>
                   )}
 
                   {msg.error && (
-                    <p className="text-rose-400 text-xs mt-2 flex items-center gap-1">
+                    <p className="text-red-600 text-xs mt-2 flex items-center gap-1">
                       <span>⚠</span> {msg.error}
                     </p>
                   )}
@@ -319,7 +320,7 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
 
       {/* ── Disconnected banner ───────────────────────────────── */}
       {!isConnected && (
-        <div className="px-5 py-2 bg-amber-950/40 border-t border-amber-800/30 flex items-center gap-2 text-xs text-amber-400 shrink-0">
+        <div className="px-5 py-2 bg-amber-50 border-t border-amber-200 flex items-center gap-2 text-xs text-amber-800 shrink-0">
           <WifiOff className="w-3.5 h-3.5 shrink-0" />
           <span>Connecting to assistant…</span>
           <span className="ml-auto flex gap-0.5">
@@ -331,7 +332,7 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
       )}
 
       {/* ── Input area ────────────────────────────────────────── */}
-      <div className="px-4 sm:px-6 py-4 border-t border-slate-800/70 bg-slate-900/50 backdrop-blur-md shrink-0">
+      <div className="px-4 sm:px-6 py-4 border-t border-slate-200 bg-slate-50/80 backdrop-blur-md shrink-0">
         <form
           onSubmit={handleSubmit}
           className="max-w-4xl mx-auto flex items-end gap-3"
@@ -340,8 +341,8 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
           <div
             className={`relative flex-1 rounded-2xl transition-all duration-300 ${
               isBusy
-                ? "p-[1.5px] input-busy-ring shadow-lg shadow-indigo-500/10"
-                : "p-[1px] bg-slate-700/40"
+                ? "p-[1.5px] input-busy-ring shadow-lg shadow-red-500/10"
+                : "p-[1px] bg-slate-200"
             }`}
           >
             <textarea
@@ -360,7 +361,7 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
                   : "Ask a question  ·  Shift+Enter for new line"
               }
               disabled={isBusy}
-              className="w-full bg-slate-950 rounded-[calc(1rem-1.5px)] py-3 pl-4 pr-4 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none resize-none leading-relaxed disabled:cursor-not-allowed transition-colors"
+              className="w-full bg-white rounded-[calc(1rem-1.5px)] py-3 pl-4 pr-4 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none resize-none leading-relaxed disabled:cursor-not-allowed transition-colors border border-transparent"
               style={{ minHeight: "44px" }}
             />
           </div>
@@ -369,7 +370,7 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
           <button
             type="submit"
             disabled={!prompt.trim() || isBusy}
-            className="shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white disabled:opacity-40 disabled:hover:from-indigo-600 disabled:hover:to-violet-600 transition-all shadow-md shadow-indigo-500/20 flex items-center justify-center"
+            className="shrink-0 w-10 h-10 rounded-xl bg-[#e11d24] hover:bg-[#c81119] text-white disabled:opacity-40 transition-all shadow-md shadow-red-500/20 flex items-center justify-center"
           >
             {isBusy ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -380,7 +381,7 @@ export function ChatInterface({ token }: ChatInterfaceProps) {
         </form>
 
         {/* Bottom caption */}
-        <p className="mt-2 text-center text-[10px] text-slate-600">
+        <p className="mt-2 text-center text-[10px] text-slate-400">
           {isConnected ? (
             <span className="flex items-center justify-center gap-1">
               <Wifi className="w-3 h-3 text-emerald-600" />

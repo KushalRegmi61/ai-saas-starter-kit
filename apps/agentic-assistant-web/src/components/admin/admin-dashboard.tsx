@@ -201,25 +201,25 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-950 text-slate-100 font-sans p-6 overflow-y-auto">
+    <div className="flex flex-col h-full bg-white text-slate-900 font-sans p-6 overflow-y-auto">
       <div className="max-w-5xl mx-auto w-full space-y-6">
         {/* Title */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
           <div>
             <h1 className="text-xl font-bold flex items-center gap-2">
-              <Shield className="w-5 h-5 text-indigo-400" />
+              <Shield className="w-5 h-5 text-red-600" />
               <span>Assistant Admin Management</span>
             </h1>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               Identity store role management, RAG document indexing, and source purging.
             </p>
           </div>
-          <div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1 text-xs">
+          <div className="flex bg-white border border-slate-200 rounded-xl p-1 text-xs">
             <button
               type="button"
               onClick={() => setActiveTab("users")}
               className={`px-3 py-1.5 rounded-lg transition-colors font-medium ${
-                activeTab === "users" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-slate-200"
+                activeTab === "users" ? "bg-[#e11d24] text-white" : "text-slate-500 hover:text-slate-900"
               }`}
             >
               Users & Roles
@@ -228,7 +228,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
               type="button"
               onClick={() => setActiveTab("ingest")}
               className={`px-3 py-1.5 rounded-lg transition-colors font-medium ${
-                activeTab === "ingest" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-slate-200"
+                activeTab === "ingest" ? "bg-[#e11d24] text-white" : "text-slate-500 hover:text-slate-900"
               }`}
             >
               RAG Ingest & Delete
@@ -240,14 +240,14 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
         {activeTab === "users" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                <Users className="w-4 h-4 text-indigo-400" />
+              <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                <Users className="w-4 h-4 text-red-600" />
                 <span>Assistant Identity Store Users ({users.length})</span>
               </h2>
               <button
                 type="button"
                 onClick={() => setShowCreateUserModal(true)}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                className="px-3 py-1.5 bg-[#e11d24] hover:bg-[#c81119] text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
               >
                 <UserPlus className="w-3.5 h-3.5" />
                 <span>Create User</span>
@@ -255,15 +255,15 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
             </div>
 
             {userError && (
-              <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-800/50 text-rose-300 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-400" />
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-500" />
                 <span>{userError}</span>
               </div>
             )}
 
-            <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-900 border-b border-slate-800 uppercase text-[10px] text-slate-400 font-semibold">
+            <div className="border border-slate-200 rounded-xl overflow-hidden bg-white/60">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-white border-b border-slate-200 uppercase text-[10px] text-slate-500 font-semibold">
                   <tr>
                     <th className="p-3">User ID</th>
                     <th className="p-3">Email</th>
@@ -271,7 +271,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                     <th className="p-3 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 font-mono">
+                <tbody className="divide-y divide-slate-200/60 font-mono">
                   {isLoadingUsers ? (
                     <tr>
                       <td colSpan={4} className="p-6 text-center text-slate-500 font-sans">
@@ -286,11 +286,11 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                     </tr>
                   ) : (
                     users.map((u) => (
-                      <tr key={u.id} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="p-3 text-slate-400">{u.id.slice(0, 8)}...</td>
-                        <td className="p-3 text-slate-200 font-sans font-medium">{u.email}</td>
+                      <tr key={u.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-3 text-slate-500">{u.id.slice(0, 8)}...</td>
+                        <td className="p-3 text-slate-900 font-sans font-medium">{u.email}</td>
                         <td className="p-3">
-                          <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-indigo-950 text-indigo-300 border border-indigo-800/50">
+                          <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-red-50 text-red-700 border border-red-200">
                             {u.role}
                           </span>
                         </td>
@@ -300,7 +300,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                             onChange={(e) =>
                               handleRoleChange(u.id, e.target.value as AssistantRole)
                             }
-                            className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none"
+                            className="bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-900 focus:outline-none"
                           >
                             <option value="employee">employee</option>
                             <option value="lead">lead</option>
@@ -320,35 +320,35 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
         {/* Create User Modal */}
         {showCreateUserModal && (
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4">
-              <h3 className="text-base font-semibold text-slate-100">Create Assistant User</h3>
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-md w-full space-y-4">
+              <h3 className="text-base font-semibold text-slate-900">Create Assistant User</h3>
               <form onSubmit={handleCreateUser} className="space-y-3 text-xs">
                 <div>
-                  <label className="block text-slate-400 mb-1">Email Address</label>
+                  <label className="block text-slate-500 mb-1">Email Address</label>
                   <input
                     type="email"
                     required
                     value={newEmail}
                     onChange={(e) => setNewEmail(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200"
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-900"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 mb-1">Password</label>
+                  <label className="block text-slate-500 mb-1">Password</label>
                   <input
                     type="password"
                     required
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200"
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-900"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 mb-1">Role</label>
+                  <label className="block text-slate-500 mb-1">Role</label>
                   <select
                     value={newRole}
                     onChange={(e) => setNewRole(e.target.value as AssistantRole)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200"
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-900"
                   >
                     <option value="employee">employee</option>
                     <option value="lead">lead</option>
@@ -360,13 +360,13 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                   <button
                     type="button"
                     onClick={() => setShowCreateUserModal(false)}
-                    className="px-3 py-2 border border-slate-800 rounded-lg text-slate-400 hover:bg-slate-800"
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold"
+                    className="px-4 py-2 bg-[#e11d24] hover:bg-[#c81119] text-white rounded-lg font-semibold"
                   >
                     Create User
                   </button>
@@ -381,39 +381,39 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
           <div className="space-y-6">
           <div className="grid md:grid-cols-2 gap-6">
             {/* Ingest Form */}
-            <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
-              <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                <Upload className="w-4 h-4 text-indigo-400" />
+            <div className="p-5 rounded-2xl bg-white/60 border border-slate-200 space-y-4">
+              <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                <Upload className="w-4 h-4 text-red-600" />
                 <span>Ingest Document</span>
               </h3>
               <form onSubmit={handleIngest} className="space-y-3 text-xs">
                 <div>
-                  <label className="block text-slate-400 mb-1">File Upload</label>
+                  <label className="block text-slate-500 mb-1">File Upload</label>
                   <input
                     type="file"
                     required
                     onChange={(e) => setFile(e.target.files?.[0] || null)}
-                    className="w-full text-slate-300 bg-slate-950 border border-slate-800 rounded-lg p-2"
+                    className="w-full text-slate-600 bg-white border border-slate-200 rounded-lg p-2"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 mb-1">Source Name / URI</label>
+                  <label className="block text-slate-500 mb-1">Source Name / URI</label>
                   <input
                     type="text"
                     required
                     value={source}
                     onChange={(e) => setSource(e.target.value)}
                     placeholder="docs/security-policy.pdf"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200"
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2 text-slate-900"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-slate-400 mb-1">Department</label>
+                    <label className="block text-slate-500 mb-1">Department</label>
                     <select
                       value={department}
                       onChange={(e) => setDepartment(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none"
+                      className="w-full bg-white border border-slate-200 rounded-lg p-2 text-slate-900 focus:outline-none"
                     >
                       <option value="">— infer from filename —</option>
                       <option value="general">general</option>
@@ -424,11 +424,11 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-slate-400 mb-1">Access Level</label>
+                    <label className="block text-slate-500 mb-1">Access Level</label>
                     <select
                       value={accessLevel}
                       onChange={(e) => setAccessLevel(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none"
+                      className="w-full bg-white border border-slate-200 rounded-lg p-2 text-slate-900 focus:outline-none"
                     >
                       <option value="public">public</option>
                       <option value="internal">internal</option>
@@ -440,58 +440,58 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                 <button
                   type="submit"
                   disabled={isIngesting || !file || !source}
-                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
+                  className="w-full py-2.5 bg-[#e11d24] hover:bg-[#c81119] text-white rounded-lg font-semibold disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
                 >
                   {isIngesting ? <RefreshCw className="w-4 h-4 animate-spin" /> : "Index Document"}
                 </button>
               </form>
 
               {ingestResult && (
-                <div className="p-3 rounded-lg bg-emerald-950/50 border border-emerald-800/50 text-emerald-300 text-xs flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>{ingestResult}</span>
                 </div>
               )}
               {ingestError && (
-                <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-800/50 text-rose-300 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
                   <span>{ingestError}</span>
                 </div>
               )}
             </div>
 
             {/* Purge Source Form */}
-            <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
-              <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                <Trash2 className="w-4 h-4 text-rose-400" />
+            <div className="p-5 rounded-2xl bg-white/60 border border-slate-200 space-y-4">
+              <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                <Trash2 className="w-4 h-4 text-red-500" />
                 <span>Purge Source from RAG Index</span>
               </h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
+              <p className="text-xs text-slate-500 leading-relaxed">
                 Remove all chunks associated with a source document from both vector storage and keyword indexes.
               </p>
               <form onSubmit={handleDeleteSource} className="space-y-3 text-xs">
                 <div>
-                  <label className="block text-slate-400 mb-1">Source Name / Key</label>
+                  <label className="block text-slate-500 mb-1">Source Name / Key</label>
                   <input
                     type="text"
                     required
                     value={deleteSourceInput}
                     onChange={(e) => setDeleteSourceInput(e.target.value)}
                     placeholder="docs/security-policy.pdf"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200"
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2 text-slate-900"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={isDeleting || !deleteSourceInput}
-                  className="w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-semibold disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
+                  className="w-full py-2.5 bg-[#e11d24] hover:bg-[#c81119] text-white rounded-lg font-semibold disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
                 >
                   {isDeleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : "Purge Indexed Source"}
                 </button>
               </form>
 
               {deleteResult && (
-                <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 text-xs">
+                <div className="p-3 rounded-lg bg-white border border-slate-200 text-slate-600 text-xs">
                   {deleteResult}
                 </div>
               )}
@@ -501,15 +501,15 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
           {/* Indexed Documents Table */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                <FileText className="w-4 h-4 text-indigo-400" />
+              <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-red-600" />
                 <span>Indexed Documents ({sources.length})</span>
               </h2>
               <button
                 type="button"
                 onClick={() => void fetchSources()}
                 disabled={isLoadingSources}
-                className="px-3 py-1.5 border border-slate-800 rounded-lg text-slate-400 hover:bg-slate-800 text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoadingSources ? "animate-spin" : ""}`} />
                 <span>Refresh</span>
@@ -517,15 +517,15 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
             </div>
 
             {sourcesError && (
-              <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-800/50 text-rose-300 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-400" />
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-500" />
                 <span>{sourcesError}</span>
               </div>
             )}
 
-            <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-900 border-b border-slate-800 uppercase text-[10px] text-slate-400 font-semibold">
+            <div className="border border-slate-200 rounded-xl overflow-hidden bg-white/60">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-white border-b border-slate-200 uppercase text-[10px] text-slate-500 font-semibold">
                   <tr>
                     <th className="p-3">Source</th>
                     <th className="p-3">Department</th>
@@ -535,7 +535,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                     <th className="p-3 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 font-mono">
+                <tbody className="divide-y divide-slate-200/60 font-mono">
                   {isLoadingSources ? (
                     <tr>
                       <td colSpan={6} className="p-6 text-center text-slate-500 font-sans">
@@ -550,16 +550,16 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                     </tr>
                   ) : (
                     sources.map((doc) => (
-                      <tr key={`${doc.tenant ?? "default"}:${doc.source}`} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="p-3 text-slate-200 font-sans font-medium break-all">{doc.source}</td>
-                        <td className="p-3 text-slate-400">{doc.department ?? "—"}</td>
+                      <tr key={`${doc.tenant ?? "default"}:${doc.source}`} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-3 text-slate-900 font-sans font-medium break-all">{doc.source}</td>
+                        <td className="p-3 text-slate-500">{doc.department ?? "—"}</td>
                         <td className="p-3">
-                          <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-indigo-950 text-indigo-300 border border-indigo-800/50">
+                          <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-red-50 text-red-700 border border-red-200">
                             {doc.access_level ?? "—"}
                           </span>
                         </td>
-                        <td className="p-3 text-slate-400">{doc.chunks_count}</td>
-                        <td className="p-3 text-slate-400">
+                        <td className="p-3 text-slate-500">{doc.chunks_count}</td>
+                        <td className="p-3 text-slate-500">
                           {doc.indexed_at ? new Date(doc.indexed_at).toLocaleString() : "—"}
                         </td>
                         <td className="p-3 text-right font-sans">
@@ -567,7 +567,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                             type="button"
                             onClick={() => void handlePurgeRow(doc)}
                             disabled={purgingSource !== null}
-                            className="px-2 py-1 border border-rose-800/50 rounded text-rose-300 hover:bg-rose-950/50 text-xs font-semibold transition-colors disabled:opacity-50"
+                            className="px-2 py-1 border border-red-200 rounded text-red-600 hover:bg-red-50 text-xs font-semibold transition-colors disabled:opacity-50"
                           >
                             {purgingSource === doc.source ? "Purging..." : "Purge"}
                           </button>

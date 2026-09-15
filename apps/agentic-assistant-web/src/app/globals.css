@@ -1,17 +1,26 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
 :root {
-  --background: #020617;
-  --foreground: #f1f5f9;
-  --accent-from: #6366f1;
-  --accent-to: #8b5cf6;
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --font-display: "Outfit", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  --color-brand: #e11d24;
+  --color-brand-dark: #c81119;
+  --color-brand-soft: #fef2f2;
+  --color-brand-mid: #fca5a5;
+  --radius-card: 16px;
+  --shadow-card: 0 2px 16px -4px rgba(15, 23, 42, 0.06), 0 1px 4px -2px rgba(15, 23, 42, 0.04);
+  --shadow-card-hover: 0 8px 32px -8px rgba(15, 23, 42, 0.1), 0 2px 8px -2px rgba(15, 23, 42, 0.05);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: "Inter", system-ui, sans-serif;
+  --font-display: "Outfit", "Inter", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
 }
 
@@ -21,16 +30,63 @@ body {
   font-family: "Inter", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+code,
+pre,
+.mono {
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background: #ef4444;
+  color: #fff;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Workalaya primitives ─────────────────────────────────── */
+.card {
+  background: #fff;
+  border: 1px solid #f1f5f9;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.eyebrow {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-brand);
+}
+
+.grid-background {
+  background-size: 48px 48px;
+  background-image:
+    linear-gradient(to right, rgba(15, 23, 42, 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.025) 1px, transparent 1px);
 }
 
 /* ── Scroll behaviour ───────────────────────────────────────── */
 .chat-scroll {
   scroll-behavior: smooth;
   overflow-anchor: none;
-  /* Dark thin scrollbar (thumb was rendering in the browser default
-     light color). Firefox first, WebKit/Chromium below. */
   scrollbar-width: thin;
-  scrollbar-color: #334155 transparent;
+  scrollbar-color: #e2e8f0 transparent;
 }
 
 .chat-scroll::-webkit-scrollbar {
@@ -43,12 +99,12 @@ body {
 }
 
 .chat-scroll::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #e2e8f0;
   border-radius: 9999px;
 }
 
 .chat-scroll::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: var(--color-brand);
 }
 
 /* ── Entrance animations ────────────────────────────────────── */
@@ -118,18 +174,18 @@ body {
   background:
     conic-gradient(
       from var(--border-angle),
-      #6366f1 0%,
-      #8b5cf6 30%,
-      #06b6d4 60%,
-      #6366f1 100%
+      #e11d24 0%,
+      #fca5a5 30%,
+      #fb923c 60%,
+      #e11d24 100%
     )
     border-box;
 }
 
 /* ── Step progress pills ────────────────────────────────────── */
 @keyframes step-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
-  50%       { box-shadow: 0 0 8px 2px rgba(99, 102, 241, 0.5); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(225, 29, 36, 0); }
+  50%       { box-shadow: 0 0 8px 2px rgba(225, 29, 36, 0.35); }
 }
 
 .step-active {

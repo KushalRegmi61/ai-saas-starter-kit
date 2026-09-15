@@ -17,17 +17,17 @@ const STEP_CONFIG: Record<
   rewrite: {
     label: "Rewriting query…",
     icon: "✦",
-    color: "text-amber-400",
+    color: "text-amber-600",
   },
   retrieve: {
     label: "Retrieving sources…",
     icon: "◈",
-    color: "text-sky-400",
+    color: "text-sky-600",
   },
   generate: {
     label: "Generating answer…",
     icon: "◉",
-    color: "text-indigo-400",
+    color: "text-red-600",
   },
   idle: {
     label: "Thinking…",
@@ -48,18 +48,18 @@ export function ThinkingIndicator({ step = "idle" }: ThinkingIndicatorProps) {
           className="absolute inset-0 rounded-full spin-ring"
           style={{
             background:
-              "conic-gradient(from 0deg, #6366f1, #8b5cf6, #06b6d4, #6366f1)",
+              "conic-gradient(from 0deg, #e11d24, #fca5a5, #fb923c, #e11d24)",
             padding: "2px",
           }}
         >
-          <div className="w-full h-full rounded-full bg-slate-900" />
+          <div className="w-full h-full rounded-full bg-white" />
         </div>
 
         {/* Bouncing dots in the centre */}
         <div className="relative flex items-end gap-[3px]">
-          <span className="dot-1 w-1 h-1 rounded-full bg-indigo-400 block" />
-          <span className="dot-2 w-1 h-1 rounded-full bg-violet-400 block" />
-          <span className="dot-3 w-1 h-1 rounded-full bg-sky-400 block" />
+          <span className="dot-1 w-1 h-1 rounded-full bg-red-500 block" />
+          <span className="dot-2 w-1 h-1 rounded-full bg-red-400 block" />
+          <span className="dot-3 w-1 h-1 rounded-full bg-orange-400 block" />
         </div>
       </div>
 
@@ -85,11 +85,11 @@ export function ThinkingIndicator({ step = "idle" }: ThinkingIndicatorProps) {
                 className={[
                   "h-1 rounded-full transition-all duration-500",
                   isActive
-                    ? "w-6 step-active bg-indigo-500"
+                    ? "w-6 step-active bg-red-500"
                     : isDone
-                    ? "w-3 bg-indigo-800"
+                    ? "w-3 bg-red-800"
                     : isPending
-                    ? "w-3 bg-slate-700"
+                    ? "w-3 bg-slate-200"
                     : "",
                 ].join(" ")}
               />

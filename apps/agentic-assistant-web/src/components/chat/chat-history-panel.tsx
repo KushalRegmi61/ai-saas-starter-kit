@@ -41,13 +41,13 @@ export function ChatHistoryPanel({
 }: ChatHistoryPanelProps) {
   return (
     <aside
-      className={`shrink-0 border-slate-800/80 bg-slate-900/50 hidden md:flex flex-col min-h-0 overflow-hidden transition-[width] duration-200 ease-out ${
+      className={`shrink-0 border-slate-200 bg-slate-50/80 hidden md:flex flex-col min-h-0 overflow-hidden transition-[width] duration-200 ease-out ${
         open ? "w-64 border-r" : "w-0 border-r-0"
       }`}
     >
-      <div className="px-4 py-3 border-b border-slate-800/60 flex items-center gap-2 shrink-0 w-64">
+      <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2 shrink-0 w-64">
         <History className="w-4 h-4 text-slate-400" />
-        <h2 className="text-xs font-semibold text-slate-200 tracking-wide uppercase">
+        <h2 className="text-xs font-semibold text-slate-900 tracking-wide uppercase">
           Past chats
         </h2>
       </div>
@@ -58,19 +58,19 @@ export function ChatHistoryPanel({
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="h-16 rounded-xl bg-slate-800/50 animate-pulse"
+                className="h-16 rounded-xl bg-slate-100 animate-pulse"
               />
             ))}
           </div>
         ) : isError && summaries.length === 0 ? (
           <div className="p-3 text-center space-y-2">
-            <p className="text-xs text-rose-400">
+            <p className="text-xs text-red-600">
               {error ?? "Couldn't load past chats."}
             </p>
             <button
               type="button"
               onClick={onRetry}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-slate-700 text-slate-300 hover:bg-slate-800 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               Retry
@@ -92,11 +92,11 @@ export function ChatHistoryPanel({
                 onClick={() => onSelect(chat.conversation_id)}
                 title={chat.preview || "Open chat"}
                 className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center gap-2 disabled:cursor-wait ${
-                  isActive ? "bg-slate-800/80" : "hover:bg-slate-800/50"
+                  isActive ? "bg-red-50 border border-red-100" : "hover:bg-slate-100 border border-transparent"
                 }`}
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block text-xs text-slate-200 truncate">
+                  <span className="block text-xs text-slate-900 truncate">
                     {chat.preview || "New conversation"}
                   </span>
                   <span className="mt-1 flex items-center gap-2 text-[10px] text-slate-500">
@@ -110,7 +110,7 @@ export function ChatHistoryPanel({
                   </span>
                 </span>
                 {isSelecting && (
-                  <Loader2 className="w-3.5 h-3.5 mt-1 shrink-0 animate-spin text-indigo-400" />
+                  <Loader2 className="w-3.5 h-3.5 mt-1 shrink-0 animate-spin text-red-600" />
                 )}
               </button>
             );
