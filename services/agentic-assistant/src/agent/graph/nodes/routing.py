@@ -19,7 +19,9 @@ from agent.graph.state import AgentState
 
 logger = logging.getLogger(__name__)
 
-_PROJECT_TOOL_NAMES = frozenset(
+# Project SQL tools. Shared with classify, which strips these for roles with
+# no project visibility (every call would return forbidden).
+PROJECT_TOOL_NAMES = frozenset(
     {
         "get_project_overview",
         "get_project_features",
@@ -130,7 +132,7 @@ def project_access_denied(state: AgentState) -> bool:
     outcomes = state.get("project_tool_outcomes", [])
     if not outcomes:
         return False
-    if not any(item.get("tool", "") in _PROJECT_TOOL_NAMES for item in outcomes):
+    if not any(item.get("tool", "") in PROJECT_TOOL_NAMES for item in outcomes):
         return False
     return all(item.get("status") == "forbidden" for item in outcomes)
 

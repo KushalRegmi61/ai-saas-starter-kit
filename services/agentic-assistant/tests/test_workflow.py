@@ -636,3 +636,77 @@ def test_recovery_context_stays_honest_when_fallback_finds_nothing():
 def test_graph_includes_global_search_fallback_node():
     graph = get_agent_graph()
     assert "force_global_search" in set(graph.nodes.keys())
+
+
+# --------------------------------------------------------------------------- #
+# Early RAG-only routing for roles without project visibility                  #
+# --------------------------------------------------------------------------- #
+
+
+def _claims(role):
+    from auth.types import AssistantClaims
+
+    return AssistantClaims(
+        subject="u-1", role=role, issued_at=0, expires_at=9999999999
+    )
+
+
+def test_employee_project_question_routes_to_rag_only():
+    parsed = _enforce_project_selection(
+        "Tell me about the internal agentic assistant project",
+        {
+            "intent": "needs_tools",
+            "tools": ["get_project_overview", "search_project_knowledge"],
+        },
+        _claims("employee"),
+    )
+    assert parsed == {"intent": "needs_tools", "tools": ["search_knowledge_base"]}
+
+
+def test_employee_chitchat_without_project_signals_stays_chitchat():
+    parsed = _enforce_project_selection(
+        "hello there", {"intent": "chitchat", "tools": []}, _claims("employee")
+    )
+    assert parsed == {"intent": "chitchat", "tools": []}
+
+
+def test_employee_out_of_scope_stays_out_of_scope():
+    parsed = _enforce_project_selection(
+        "Tell me about the internal agentic assistant project",
+        {"intent": "out_of_scope", "tools": []},
+        _claims("employee"),
+    )
+    assert parsed == {"intent": "out_of_scope", "tools": []}
+
+
+def test_unknown_role_is_denied_project_tools_upfront():
+    parsed = _enforce_project_selection(
+        "Tell me about the internal agentic assistant project",
+        {
+            "intent": "needs_tools",
+            "tools": ["get_project_overview", "search_project_knowledge"],
+        },
+        _claims("contractor"),
+    )
+    assert parsed == {"intent": "needs_tools", "tools": ["search_knowledge_base"]}
+
+
+@pytest.mark.parametrize("role", ["lead", "manager", "admin"])
+def test_privileged_roles_keep_project_tools(role):
+    selected = _enforce_project_selection(
+        "Tell me about the internal agentic assistant project",
+        {"intent": "needs_tools", "tools": ["search_knowledge_base"]},
+        _claims(role),
+    )["tools"]
+    assert "get_project_overview" in selected
+    assert "search_project_knowledge" in selected
+
+
+def test_unknown_identity_fails_open_to_project_tools():
+    selected = _enforce_project_selection(
+        "Tell me about the internal agentic assistant project",
+        {"intent": "needs_tools", "tools": ["search_knowledge_base"]},
+        None,
+    )["tools"]
+    assert "get_project_overview" in selected
+    assert "search_project_knowledge" in selected

@@ -26,6 +26,7 @@ from typing import Optional
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 
+from agent.graph.nodes.routing import PROJECT_TOOL_NAMES
 from agent.graph.state import AgentState
 from agent.llm import LLMContext, invoke_response
 from agent.tools.registry import get_tool_names, get_tool_schemas_for_classifier
@@ -94,7 +95,9 @@ async def classify_intent(
     )
 
     raw = await invoke_response(ctx, config=config, route="fast")
-    parsed = _enforce_project_selection(state["question"], _parse_response(raw))
+    parsed = _enforce_project_selection(
+        state["question"], _parse_response(raw), state.get("claims")
+    )
 
     logger.info(
         "node classify: done intent=%s tools=%s question=%r",
@@ -183,21 +186,17 @@ _PROJECT_SIGNALS = re.compile(
     r"documentation|decision|context|workstream|work update|history)\b",
     re.IGNORECASE,
 )
-def _enforce_project_selection(question: str, parsed: dict) -> dict:
+def _enforce_project_selection(question: str, parsed: dict, claims=None) -> dict:
     """Make project routing deterministic after the classifier responds."""
     if parsed.get("intent") == "out_of_scope":
         return parsed
+    if _lacks_project_access(claims):
+        return _route_without_project_tools(question, parsed)
     if not _PROJECT_SIGNALS.search(question):
         return parsed
 
     names = list(parsed.get("tools", []))
-    project_tools = {
-        "get_project_overview",
-        "get_project_features",
-        "get_project_blockers",
-        "get_project_activity",
-        "search_project_knowledge",
-    }
+    project_tools = PROJECT_TOOL_NAMES
     if not names or parsed.get("intent") == "chitchat":
         names = ["get_project_overview"]
 
@@ -222,3 +221,36 @@ def _enforce_project_selection(question: str, parsed: dict) -> dict:
         selected.append("search_project_knowledge")
 
     return {"intent": "needs_tools", "tools": selected}
+
+
+def _lacks_project_access(claims) -> bool:
+    """True when the caller's role can never view project SQL data.
+
+    Employees (and unknown roles) fail _require_project_viewer for every
+    project, so each project tool call would return forbidden. Claims of
+    None means the identity is unknown (tests, internal callers) — fail open
+    to the normal path and let the reactive global-search fallback cover a
+    denial. Leads keep project tools: their access is per-project and only
+    knowable by resolving the reference server-side.
+    """
+    from agent.authz import can_view_all_projects, can_view_assigned_projects
+
+    if claims is None:
+        return False
+    role = claims.role if hasattr(claims, "role") else claims.get("role")
+    return not (can_view_all_projects(role) or can_view_assigned_projects(role))
+
+
+def _route_without_project_tools(question: str, parsed: dict) -> dict:
+    """Route roles with no project visibility straight to the knowledge base.
+
+    Project SQL tools are skipped upfront — they would only return forbidden
+    evidence cards. The ABAC-filtered global RAG supplies whatever the caller
+    may see; an empty result yields the honest unknown-answer path.
+    """
+    if parsed.get("intent") == "chitchat" and not _PROJECT_SIGNALS.search(question):
+        return parsed
+    names = [name for name in parsed.get("tools", []) if name not in PROJECT_TOOL_NAMES]
+    if "search_knowledge_base" not in names:
+        names.append("search_knowledge_base")
+    return {"intent": "needs_tools", "tools": names}

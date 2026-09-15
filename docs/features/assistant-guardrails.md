@@ -29,6 +29,14 @@ valid evidence, so the resolved-project-name requirement does not force a
 refusal on the fallback path. If the fallback also finds nothing, the answer
 stays a refusal stating the information is not accessible.
 
+Roles with no project visibility at all (for example `employee`, which fails
+the project-viewer check for every project) skip the project SQL tools
+upfront: the classifier routes them straight to `search_knowledge_base`
+instead of collecting guaranteed `forbidden` evidence cards. Leads keep the
+project tools because their access is per-project — whether a referenced
+project is theirs is only knowable by resolving it server-side — and the
+fallback above covers the case where it is not.
+
 The existing WebSocket protocol is unchanged. Generated tokens can arrive
 before the audit completes; the terminal `done.answer` is authoritative and
 replaces the streamed draft in the web client. A failed draft may therefore be
