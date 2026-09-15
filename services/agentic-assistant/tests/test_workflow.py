@@ -7,8 +7,9 @@ from langchain_core.messages import AIMessage, ToolMessage
 from rag.types import AccessFilter, SearchResult, Source
 
 from agent.graph.nodes import check_grounding, route_after_agent, route_after_classify
-from agent.graph.nodes.classify import _enforce_project_selection
+from agent.graph.nodes.classify import _enforce_project_selection, _parse_response
 from agent.graph.nodes.generate_final import _assemble_context
+from agent.graph.nodes.out_of_scope import OUT_OF_SCOPE_RESPONSE
 from agent.graph.nodes.routing import _needs_project_search_fallback
 from agent.graph.state import make_initial_state, merge_project_evidence
 from agent.graph.tool_runner import (
@@ -37,6 +38,7 @@ def _result(text="t", source="s.pdf", score=0.9):
 # Routing tests                                                                #
 # --------------------------------------------------------------------------- #
 
+
 def test_route_after_classify_chitchat():
     assert route_after_classify(_state(intent="chitchat")) == "chitchat"
 
@@ -45,14 +47,42 @@ def test_route_after_classify_needs_tools():
     assert route_after_classify(_state(intent="needs_tools")) == "needs_tools"
 
 
-def test_route_after_classify_unknown_defaults_to_needs_tools():
-    assert route_after_classify(_state(intent="unknown_xyz")) == "needs_tools"
+def test_route_after_classify_out_of_scope_skips_tools():
+    assert route_after_classify(_state(intent="out_of_scope")) == "out_of_scope"
+
+
+def test_route_after_classify_unknown_fails_closed():
+    assert route_after_classify(_state(intent="unknown_xyz")) == "out_of_scope"
+
+
+def test_invalid_classifier_output_fails_closed():
+    assert _parse_response("not json") == {"intent": "out_of_scope", "tools": []}
+    assert _parse_response("[]") == {"intent": "out_of_scope", "tools": []}
+    assert _parse_response('{"intent":"unknown","tools":[]}') == {
+        "intent": "out_of_scope",
+        "tools": [],
+    }
+
+
+def test_out_of_scope_classifier_result_keeps_tools_empty():
+    assert _parse_response('{"intent":"out_of_scope","tools":["search_knowledge_base"]}') == {
+        "intent": "out_of_scope",
+        "tools": [],
+    }
 
 
 def test_route_after_agent_routes_to_tools_when_under_budget():
-    ai_msg = AIMessage(content="", tool_calls=[{"name": "search_knowledge_base",
-                                                  "args": {"question": "q"},
-                                                  "id": "call_1", "type": "tool_call"}])
+    ai_msg = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "search_knowledge_base",
+                "args": {"question": "q"},
+                "id": "call_1",
+                "type": "tool_call",
+            }
+        ],
+    )
     state = _state(messages=[ai_msg], tool_call_count=1, loop_tokens_used=100)
     assert route_after_agent(state) == "tools"
 
@@ -65,18 +95,36 @@ def test_route_after_agent_ends_when_no_tool_calls():
 
 def test_route_after_agent_ends_at_iteration_cap():
     from agent.graph.nodes.agent import MAX_ITERATIONS
-    ai_msg = AIMessage(content="", tool_calls=[{"name": "search_knowledge_base",
-                                                  "args": {"question": "q"},
-                                                  "id": "call_2", "type": "tool_call"}])
+
+    ai_msg = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "search_knowledge_base",
+                "args": {"question": "q"},
+                "id": "call_2",
+                "type": "tool_call",
+            }
+        ],
+    )
     state = _state(messages=[ai_msg], tool_call_count=MAX_ITERATIONS, loop_tokens_used=100)
     assert route_after_agent(state) == "generate"
 
 
 def test_route_after_agent_ends_at_token_cap():
     from agent.graph.nodes.agent import MAX_LOOP_TOKENS
-    ai_msg = AIMessage(content="", tool_calls=[{"name": "search_knowledge_base",
-                                                  "args": {"question": "q"},
-                                                  "id": "call_3", "type": "tool_call"}])
+
+    ai_msg = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "search_knowledge_base",
+                "args": {"question": "q"},
+                "id": "call_3",
+                "type": "tool_call",
+            }
+        ],
+    )
     state = _state(messages=[ai_msg], tool_call_count=1, loop_tokens_used=MAX_LOOP_TOKENS)
     assert route_after_agent(state) == "generate"
 
@@ -88,6 +136,7 @@ def test_route_after_agent_ends_on_empty_messages():
 # --------------------------------------------------------------------------- #
 # Grounding tests                                                              #
 # --------------------------------------------------------------------------- #
+
 
 def test_check_grounding_true_when_source_cited():
     state = _state(
@@ -112,15 +161,73 @@ def test_check_grounding_false_when_no_results():
     assert check_grounding(_state(answer="hello", results=[], sources=[]))["grounded"] is False
 
 
+def test_needs_tools_without_evidence_gets_warm_rejection():
+    state = _state(
+        intent="needs_tools", answer="The answer is definitely X", results=[], sources=[]
+    )
+    output = check_grounding(state)
+    assert output["answer"] == OUT_OF_SCOPE_RESPONSE
+    assert output["grounded"] is False
+
+
+def test_valid_rag_answer_requires_and_accepts_source_citation():
+    result = _result(text="The handbook says X.", source="handbook.pdf")
+    state = _state(
+        intent="needs_tools",
+        answer="According to handbook.pdf, the handbook says X.",
+        results=[result],
+        sources=[{"source": "handbook.pdf"}],
+    )
+    output = check_grounding(state)
+    assert output["answer"] == state["answer"]
+    assert output["grounded"] is True
+
+
+def test_valid_project_answer_requires_resolved_project_name():
+    from agent.types import ProjectToolEvidence
+
+    state = _state(
+        intent="needs_tools",
+        selected_tools=["get_project_overview"],
+        answer="Workalaya is 50 percent complete.",
+        project_evidence=[
+            ProjectToolEvidence(
+                tool="get_project_overview",
+                status="resolved",
+                project_name="Workalaya",
+                result_count=1,
+            )
+        ],
+    )
+    output = check_grounding(state)
+    assert output["answer"] == state["answer"]
+    assert output["grounded"] is True
+
+
+def test_answer_with_internal_data_is_replaced():
+    result = _result(text="The handbook says X.", source="handbook.pdf")
+    state = _state(
+        intent="needs_tools",
+        answer="handbook.pdf says project_id p-1 is active.",
+        results=[result],
+        sources=[{"source": "handbook.pdf"}],
+    )
+    output = check_grounding(state)
+    assert output["answer"] == OUT_OF_SCOPE_RESPONSE
+    assert "project_id" not in output["answer"]
+
+
 # --------------------------------------------------------------------------- #
 # Graph structure test                                                         #
 # --------------------------------------------------------------------------- #
+
 
 def test_graph_compiles_with_expected_nodes():
     graph = get_agent_graph()
     node_keys = set(graph.nodes.keys())
     assert "classify_intent" in node_keys
     assert "chitchat_respond" in node_keys
+    assert "out_of_scope" in node_keys
     assert "agent" in node_keys
     assert "tools" in node_keys
 
@@ -241,9 +348,7 @@ async def test_tool_runner_promotes_project_knowledge_to_grounding_state():
 
 
 def test_force_project_search_uses_resolved_project_name():
-    state = _state(
-        resolved_project={"project_id": "p-1", "name": "Workalay", "description": None}
-    )
+    state = _state(resolved_project={"project_id": "p-1", "name": "Workalay", "description": None})
     output = force_project_search(state)
     assert output["messages"][0].tool_calls[0]["name"] == "search_project_knowledge"
     assert output["messages"][0].tool_calls[0]["args"]["project_reference"] == "Workalay"
@@ -288,11 +393,47 @@ def test_project_evidence_reducer_keeps_one_latest_card_per_tool():
 @pytest.mark.parametrize(
     ("tool", "payload", "count"),
     [
-        ("get_project_overview", {"resolution": {"status": "resolved", "project": {"name": "P"}}, "feature_counts": {}, "open_blocker_count": 0}, 1),
-        ("get_project_features", {"resolution": {"status": "resolved", "project": {"name": "P"}}, "features": [], "feature_counts": {}}, 0),
-        ("get_project_blockers", {"resolution": {"status": "resolved", "project": {"name": "P"}}, "blockers": []}, 0),
-        ("get_project_activity", {"resolution": {"status": "resolved", "project": {"name": "P"}}, "updates": [], "history": []}, 0),
-        ("search_project_knowledge", {"resolution": {"status": "resolved", "project": {"name": "P"}}, "query": "q", "results": []}, 0),
+        (
+            "get_project_overview",
+            {
+                "resolution": {"status": "resolved", "project": {"name": "P"}},
+                "feature_counts": {},
+                "open_blocker_count": 0,
+            },
+            1,
+        ),
+        (
+            "get_project_features",
+            {
+                "resolution": {"status": "resolved", "project": {"name": "P"}},
+                "features": [],
+                "feature_counts": {},
+            },
+            0,
+        ),
+        (
+            "get_project_blockers",
+            {"resolution": {"status": "resolved", "project": {"name": "P"}}, "blockers": []},
+            0,
+        ),
+        (
+            "get_project_activity",
+            {
+                "resolution": {"status": "resolved", "project": {"name": "P"}},
+                "updates": [],
+                "history": [],
+            },
+            0,
+        ),
+        (
+            "search_project_knowledge",
+            {
+                "resolution": {"status": "resolved", "project": {"name": "P"}},
+                "query": "q",
+                "results": [],
+            },
+            0,
+        ),
     ],
 )
 def test_project_tool_evidence_covers_empty_result_contract(tool, payload, count):

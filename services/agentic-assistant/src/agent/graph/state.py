@@ -42,13 +42,13 @@ class AgentState(dict):
     # ------------------------------------------------------------------ #
     # Session-level — set at request start, never mutated by nodes        #
     # ------------------------------------------------------------------ #
-    question: str                          # original user question
-    access_filter: AccessFilter | None     # ABAC — injected into tools, LLM never sees it
-    conversation_history: list[dict]       # prior turns: [{"role": ..., "content": ...}]
-    memory_summary: str                    # rolling compacted summary
-    search_mode: SearchMode                # passed through to tool
-    claims: AssistantClaims | None         # verified request identity, hidden from model
-    pool: Any                              # request-scoped assistant database pool
+    question: str  # original user question
+    access_filter: AccessFilter | None  # ABAC — injected into tools, LLM never sees it
+    conversation_history: list[dict]  # prior turns: [{"role": ..., "content": ...}]
+    memory_summary: str  # rolling compacted summary
+    search_mode: SearchMode  # passed through to tool
+    claims: AssistantClaims | None  # verified request identity, hidden from model
+    pool: Any  # request-scoped assistant database pool
     resolved_project: ProjectCandidate | None
     project_candidates: list[ProjectCandidate]
     project_tool_outcomes: Annotated[list[dict[str, Any]], operator.add]
@@ -58,10 +58,10 @@ class AgentState(dict):
     # ReAct loop — mutated each iteration                                 #
     # ------------------------------------------------------------------ #
     messages: Annotated[list[BaseMessage], operator.add]  # append-only reducer
-    intent: str           # "chitchat" | "needs_tools" — set by classify node
-    selected_tools: list[str]   # tool names chosen by classifier
-    tool_call_count: int        # iteration counter — hard cap enforcement
-    loop_tokens_used: int       # cumulative tokens across loop LLM calls
+    intent: str  # "chitchat" | "needs_tools" | "out_of_scope"
+    selected_tools: list[str]  # tool names chosen by classifier
+    tool_call_count: int  # iteration counter — hard cap enforcement
+    loop_tokens_used: int  # cumulative tokens across loop LLM calls
 
     # ------------------------------------------------------------------ #
     # Result accumulation — written by tool + streaming                   #
@@ -70,9 +70,11 @@ class AgentState(dict):
     # searches in one step never raise InvalidUpdateError and no retrieved
     # chunk is silently dropped from grounding input or the evidence panel.
     results: Annotated[list[SearchResult], operator.add]  # chunks from all tool calls this turn
-    answer: str                   # final answer text
-    sources: Annotated[list[dict], operator.add]  # serialised Source objects + truncated snippet, all calls
-    grounded: bool                # grounding check result
+    answer: str  # final answer text
+    sources: Annotated[
+        list[dict], operator.add
+    ]  # serialised Source objects + truncated snippet, all calls
+    grounded: bool  # grounding check result
     # Nodes overwrite the full trail each step, so last-wins keeps that style
     # while still tolerating parallel tool writes (one entry may lose the race).
     workflow_steps: Annotated[list[str], lambda _old, new: new]  # audit trail of node transitions

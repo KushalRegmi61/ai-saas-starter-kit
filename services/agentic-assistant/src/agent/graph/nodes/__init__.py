@@ -16,6 +16,7 @@ from agent.graph.nodes.classify import classify_intent
 from agent.graph.nodes.common import _content_text, sources_from_state
 from agent.graph.nodes.generate_final import generate_final
 from agent.graph.nodes.grounding import check_grounding
+from agent.graph.nodes.out_of_scope import out_of_scope
 from agent.graph.nodes.routing import route_after_agent, route_after_classify
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "chitchat_respond",
     "classify_intent",
     "generate_final",
+    "out_of_scope",
     "route_after_agent",
     "route_after_classify",
     "sources_from_state",

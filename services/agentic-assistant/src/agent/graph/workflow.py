@@ -5,6 +5,7 @@ Graph topology:
     START
       └─► classify_intent
             ├─[chitchat]──► chitchat_respond ──► END
+            ├─[out_of_scope]──► out_of_scope ──► END
             └─[needs_tools]► agent ◄────────────────┐
                               │                      │
                          [tools & under budget]      │
@@ -37,6 +38,7 @@ from agent.graph.nodes.agent import agent_node
 from agent.graph.nodes.chitchat import chitchat_respond
 from agent.graph.nodes.classify import classify_intent
 from agent.graph.nodes.generate_final import generate_final
+from agent.graph.nodes.out_of_scope import out_of_scope
 from agent.graph.nodes.routing import route_after_agent, route_after_classify
 from agent.graph.state import AgentState, make_initial_state
 from agent.graph.tool_runner import force_project_search, make_tool_runner
@@ -47,13 +49,16 @@ from agent.types import AskResponse
 logger = logging.getLogger(__name__)
 
 # Nodes whose start events emit a step to the client
-_STEP_NODES = frozenset({"classify_intent", "chitchat_respond", "agent", "tools", "generate_final"})
+_STEP_NODES = frozenset(
+    {"classify_intent", "chitchat_respond", "out_of_scope", "agent", "tools", "generate_final"}
+)
 _GENERATION_NODES = frozenset({"chitchat_respond", "generate_final"})
 
 
 # --------------------------------------------------------------------------- #
 # Graph factory                                                                #
 # --------------------------------------------------------------------------- #
+
 
 @lru_cache(maxsize=1)
 def get_agent_graph():
@@ -66,6 +71,7 @@ def get_agent_graph():
     graph = StateGraph(AgentState)
     graph.add_node("classify_intent", classify_intent)
     graph.add_node("chitchat_respond", chitchat_respond)
+    graph.add_node("out_of_scope", out_of_scope)
     graph.add_node("agent", agent_node)
     graph.add_node("tools", make_tool_runner(tool_node))
     graph.add_node("force_project_search", force_project_search)
@@ -75,9 +81,14 @@ def get_agent_graph():
     graph.add_conditional_edges(
         "classify_intent",
         route_after_classify,
-        {"chitchat": "chitchat_respond", "needs_tools": "agent"},
+        {
+            "chitchat": "chitchat_respond",
+            "out_of_scope": "out_of_scope",
+            "needs_tools": "agent",
+        },
     )
     graph.add_edge("chitchat_respond", END)
+    graph.add_edge("out_of_scope", END)
     graph.add_conditional_edges(
         "agent",
         route_after_agent,
@@ -99,6 +110,7 @@ def get_agent_graph():
 # --------------------------------------------------------------------------- #
 # stream_graph — pure event translator (replaces streaming.py)               #
 # --------------------------------------------------------------------------- #
+
 
 async def stream_graph(
     question: str,
@@ -195,6 +207,7 @@ async def stream_graph(
                 output = event["data"].get("output", {})
                 if isinstance(output, dict):
                     from agent.graph.nodes.agent import MAX_ITERATIONS, MAX_LOOP_TOKENS
+
                     yield {
                         "type": "step",
                         "name": "agent_budget",
@@ -241,9 +254,7 @@ async def stream_graph(
             "answer": answer,
             "sources": final_output.get("sources", []),
             "project_evidence": [
-                evidence.model_dump(mode="json")
-                if hasattr(evidence, "model_dump")
-                else evidence
+                evidence.model_dump(mode="json") if hasattr(evidence, "model_dump") else evidence
                 for evidence in final_output.get("project_evidence", [])
             ],
             "grounded": final_output.get("grounded", False),
@@ -269,6 +280,7 @@ async def stream_graph(
 # --------------------------------------------------------------------------- #
 # Sync ask() — for tests and non-streaming callers                            #
 # --------------------------------------------------------------------------- #
+
 
 def ask(
     question: str,
@@ -318,9 +330,7 @@ def ask(
             workflow_steps=final_state.get("workflow_steps", []),
         )
         span["output"] = {"answer_length": len(answer), "grounded": response.grounded}
-        logger.info(
-            "workflow: ask done answer_len=%d grounded=%s", len(answer), response.grounded
-        )
+        logger.info("workflow: ask done answer_len=%d grounded=%s", len(answer), response.grounded)
         return response
 
 
@@ -328,6 +338,7 @@ def _step_label(node_name: str) -> str:
     return {
         "classify_intent": "classifying intent",
         "chitchat_respond": "generating response",
+        "out_of_scope": "scope rejection",
         "agent": "agent reasoning",
         "tools": "executing tools",
         "generate_final": "generating final answer",

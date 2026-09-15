@@ -4,7 +4,7 @@ Every branch decision lives here. workflow.py references these by name in
 add_conditional_edges — no routing logic in the graph assembly itself.
 
 Two routers:
-  route_after_classify  → "chitchat" | "needs_tools"
+  route_after_classify  → "chitchat" | "needs_tools" | "out_of_scope"
   route_after_agent     → "tools" | "generate"   (dual budget enforcement)
 """
 
@@ -24,14 +24,13 @@ def route_after_classify(state: AgentState) -> str:
 
     Returns:
         "chitchat"    → chitchat_respond node
-        "needs_tools" → agent node (ReAct loop)
+        "needs_tools"  → agent node (ReAct loop)
+        "out_of_scope" → deterministic rejection node
     """
     intent = state.get("intent", "needs_tools")
-    if intent not in ("chitchat", "needs_tools"):
-        logger.warning(
-            "route_after_classify: unknown intent %r — defaulting to needs_tools", intent
-        )
-        return "needs_tools"
+    if intent not in ("chitchat", "needs_tools", "out_of_scope"):
+        logger.warning("route_after_classify: unknown intent %r — failing closed", intent)
+        return "out_of_scope"
     logger.info("route: classify -> %s", intent)
     return intent
 
@@ -58,9 +57,7 @@ def route_after_agent(state: AgentState) -> str:
         return "generate"
 
     last = messages[-1]
-    has_tool_calls = (
-        isinstance(last, AIMessage) and bool(getattr(last, "tool_calls", []))
-    )
+    has_tool_calls = isinstance(last, AIMessage) and bool(getattr(last, "tool_calls", []))
 
     if not has_tool_calls:
         logger.info("route: agent -> generate (no tool calls)")

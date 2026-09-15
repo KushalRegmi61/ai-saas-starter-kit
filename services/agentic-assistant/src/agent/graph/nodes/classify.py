@@ -8,7 +8,7 @@ Uses invoke_response() from agent.llm — async, no streaming (classifier
 output must never reach the client as token events).
 
 Outputs:
-  state["intent"]         "chitchat" | "needs_tools"
+  state["intent"]         "chitchat" | "needs_tools" | "out_of_scope"
   state["selected_tools"] list of tool names to bind in agent_node
   state["messages"]       HumanMessage appended (reducer)
 """
@@ -42,11 +42,14 @@ Available tools:
 {tool_schemas}
 
 Respond with ONLY a JSON object in this exact format:
-{{"intent": "chitchat" | "needs_tools", "tools": ["tool_name", ...]}}
+{{"intent": "chitchat" | "needs_tools" | "out_of_scope", "tools": ["tool_name", ...]}}
 
 Classification rules:
 - "chitchat": greetings, farewells, thanks, small talk, or messages with no \
 information need (tools must be [])
+- "out_of_scope": requests unrelated to project progress, status, features, \
+blockers, updates, decisions, or authorized enterprise knowledge in the \
+knowledge base (tools must be [])
 - "needs_tools": any question, information request, lookup, or task that \
 requires retrieving data (tools must list the relevant tool names)
 
@@ -66,14 +69,15 @@ Tool selection rules:
 - Independent project reads may be selected together so the tool runner can fan
   them out before the final answer is synthesized
 - For ambiguous follow-up questions, prefer selecting tools over chitchat
-- If unsure, default to "needs_tools" with all available tools
+- If unsure whether a request is supported, default to "out_of_scope"
 
 Return ONLY the JSON. No explanation, no markdown, no extra text.\
 """
 
 
 async def classify_intent(
-    state: AgentState, config: Optional[RunnableConfig] = None  # noqa: UP045
+    state: AgentState,
+    config: Optional[RunnableConfig] = None,  # noqa: UP045
 ) -> dict:
     """Classify intent and select tools. Appends HumanMessage to messages."""
     logger.info("node classify: start question_len=%d", len(state.get("question", "")))
@@ -115,6 +119,7 @@ async def classify_intent(
 # Helpers                                                                      #
 # --------------------------------------------------------------------------- #
 
+
 def _build_memory_block(state: AgentState) -> str:
     parts: list[str] = []
     summary = state.get("memory_summary", "")
@@ -131,9 +136,9 @@ def _build_memory_block(state: AgentState) -> str:
 
 
 def _parse_response(raw: str) -> dict:
-    """Parse classifier JSON. Fails closed to needs_tools + all tools."""
+    """Parse classifier JSON. Invalid output fails closed to out_of_scope."""
     all_tools = get_tool_names()
-    fallback = {"intent": "needs_tools", "tools": all_tools}
+    fallback = {"intent": "out_of_scope", "tools": []}
 
     cleaned = raw.strip()
     if cleaned.startswith("```"):
@@ -146,14 +151,17 @@ def _parse_response(raw: str) -> dict:
     except (json.JSONDecodeError, ValueError):
         logger.warning("classify_intent: failed to parse JSON: %r", raw[:200])
         return fallback
+    if not isinstance(data, dict):
+        logger.warning("classify_intent: parsed JSON is not an object")
+        return fallback
 
     intent = data.get("intent", "")
-    if intent not in ("chitchat", "needs_tools"):
-        logger.warning("classify_intent: unknown intent %r — defaulting to needs_tools", intent)
-        intent = "needs_tools"
+    if intent not in ("chitchat", "needs_tools", "out_of_scope"):
+        logger.warning("classify_intent: unknown intent %r — failing closed", intent)
+        return fallback
 
-    if intent == "chitchat":
-        return {"intent": "chitchat", "tools": []}
+    if intent in ("chitchat", "out_of_scope"):
+        return {"intent": intent, "tools": []}
 
     raw_tools = data.get("tools", [])
     if not isinstance(raw_tools, list):
@@ -183,6 +191,8 @@ _STRUCTURED_ONLY_SIGNALS = re.compile(
 
 def _enforce_project_selection(question: str, parsed: dict) -> dict:
     """Make project routing deterministic after the classifier responds."""
+    if parsed.get("intent") == "out_of_scope":
+        return parsed
     if not _PROJECT_SIGNALS.search(question):
         return parsed
 
