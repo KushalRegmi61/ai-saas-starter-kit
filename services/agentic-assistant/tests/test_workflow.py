@@ -321,6 +321,70 @@ async def test_answer_with_internal_data_is_replaced(monkeypatch):
     assert "project_id" not in output["answer"]
 
 
+@pytest.mark.asyncio
+async def test_doc_vocabulary_grounded_when_in_retrieved_corpus():
+    """Regression: faithful summary of docs about the assistant must not abstain.
+
+    The reported failure asked about the internal agentic assistant project.
+    RAG returned architecture docs containing AccessFilter/project_id/
+    authorization/bearer-token vocabulary; the 2647-char cited draft was
+    replaced with a 152-char abstention (audit_reason=internal_data).
+    Terms already present in retrieved chunks are documentation discussion,
+    not runtime leakage.
+    """
+    doc_text = (
+        "The assistant uses an AccessFilter with tenant isolation. "
+        "Project resolution uses project_id to scope queries. "
+        "Authorization uses bearer token."
+    )
+    result = _result(text=doc_text, source="architecture.md")
+    state = _state(
+        intent="needs_tools",
+        selected_tools=["search_knowledge_base"],
+        answer=(
+            "According to architecture.md, the assistant uses an AccessFilter "
+            "with tenant isolation and project_id scoping. "
+            "Authorization uses bearer token."
+        ),
+        results=[result],
+        sources=[{"source": "architecture.md"}],
+    )
+    output = await check_grounding(state)
+    assert output["grounded"] is True
+    assert output["answer"] == state["answer"]
+
+
+@pytest.mark.asyncio
+async def test_runtime_subject_leak_still_rejected(monkeypatch):
+    """Actual runtime identifiers are always violations, even when cited."""
+    from auth.types import AssistantClaims
+
+    result = _result(text="The assistant answers questions.", source="handbook.pdf")
+    claims = AssistantClaims(
+        subject="15a051a6-17c4-4d02-8295-14f9a4895ddc",
+        role="employee",
+        issued_at=0,
+        expires_at=9999999999,
+    )
+    state = _state(
+        intent="needs_tools",
+        selected_tools=["search_knowledge_base"],
+        claims=claims,
+        answer=(
+            "According to handbook.pdf, subject "
+            "15a051a6-17c4-4d02-8295-14f9a4895ddc is active."
+        ),
+        results=[result],
+        sources=[{"source": "handbook.pdf"}],
+    )
+    monkeypatch.setattr(
+        "agent.graph.nodes.grounding.invoke_recovery_response",
+        AsyncMock(return_value="I couldn't find enough accessible information to answer that."),
+    )
+    output = await check_grounding(state)
+    assert output["grounded"] is False
+
+
 # --------------------------------------------------------------------------- #
 # Graph structure test                                                         #
 # --------------------------------------------------------------------------- #

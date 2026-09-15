@@ -87,6 +87,57 @@ _INTERNAL_DATA_PATTERNS = (
     '"tool"',
 )
 
+# High-confidence secret/identifier shapes. Unlike the keyword list above,
+# these match actual runtime values (UUIDs, call IDs, tokens) and are always
+# violations — even if the same shape somehow appears in retrieved docs.
+_SENSITIVE_VALUE_PATTERNS = (
+    r"call_[A-Za-z0-9_-]{3,}",
+    r"eyJ[A-Za-z0-9_\-]{10,}",
+    r"sk-[A-Za-z0-9]{10,}",
+    r"bearer\s+[A-Za-z0-9_\-\.]{10,}",
+    r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+)
+
+
+def _retrieved_corpus(state: AgentState) -> str:
+    """Lowercased RAG chunk texts the answer may legitimately summarize."""
+    parts: list[str] = []
+    for item in state.get("results", []) or []:
+        text = getattr(item, "text", None)
+        if text is None and isinstance(item, dict):
+            text = item.get("text")
+        if text:
+            parts.append(str(text).lower())
+    return "\n".join(parts)
+
+
+def _sensitive_values_from_state(state: AgentState) -> list[str]:
+    """Runtime identifiers that must never appear in an answer."""
+    values: list[str] = []
+    claims = state.get("claims")
+    if claims is not None:
+        subject = getattr(claims, "subject", None)
+        if subject is None and isinstance(claims, dict):
+            subject = claims.get("subject")
+        if subject:
+            values.append(str(subject).lower())
+    for msg in state.get("messages", []) or []:
+        call_id = getattr(msg, "tool_call_id", None)
+        if call_id:
+            values.append(str(call_id).lower())
+        for call in getattr(msg, "tool_calls", None) or []:
+            call_id = call.get("id") if isinstance(call, dict) else getattr(call, "id", None)
+            if call_id:
+                values.append(str(call_id).lower())
+    resolved = state.get("resolved_project")
+    if resolved is not None:
+        pid = getattr(resolved, "project_id", None)
+        if pid is None and isinstance(resolved, dict):
+            pid = resolved.get("project_id")
+        if pid:
+            values.append(str(pid).lower())
+    return [value for value in values if value]
+
 
 def _audit_grounded_answer(
     state: AgentState,
@@ -94,9 +145,26 @@ def _audit_grounded_answer(
     cites_source: bool,
     says_unknown: bool,
 ) -> tuple[bool, str]:
-    """Check evidence, citations, project scope, and internal-data leakage."""
-    if any(pattern in answer for pattern in _INTERNAL_DATA_PATTERNS):
-        return False, "internal_data"
+    """Check evidence, citations, project scope, and internal-data leakage.
+
+    Keyword hits (``project_id``, ``access_filter``, ...) are only leakage
+    when the model introduced them: terms already present in the retrieved
+    RAG chunks are legitimate documentation discussion, not echoed runtime
+    internals. Actual runtime values (claim subjects, tool call IDs,
+    project IDs, token shapes) are always violations.
+    """
+    for value in _sensitive_values_from_state(state):
+        if value in answer:
+            return False, f"internal_data:{value[:32]}"
+
+    for value_pattern in _SENSITIVE_VALUE_PATTERNS:
+        if re.search(value_pattern, answer, re.IGNORECASE):
+            return False, f"internal_data:{value_pattern[:24]}"
+
+    corpus = _retrieved_corpus(state)
+    for pattern in _INTERNAL_DATA_PATTERNS:
+        if pattern in answer and pattern not in corpus:
+            return False, f"internal_data:{pattern}"
 
     results = state.get("results", [])
     evidence = state.get("project_evidence", [])

@@ -18,6 +18,13 @@ sources when applicable, remain tied to the resolved project, and avoid raw
 tool data or authorization details. Before generation, tool JSON is redacted
 of identifiers and identity material (project/call IDs, filters, claims,
 tokens), so the model cannot echo them into the draft and trip the audit.
+The internal-data audit only flags vocabulary the model introduced: a keyword
+hit (`project_id`, `access_filter`, `authorization`, ...) is a violation only
+when that term does not appear in the retrieved RAG chunks, so faithful
+summaries of documentation about the assistant itself stay grounded. Actual
+runtime values (claim subjects, tool call IDs, project IDs, UUID/token
+shapes) are always violations. The audit reason names the matched signal
+(`internal_data:<pattern>`) for log triage.
 The project-scope check tolerates natural
 paraphrase of the resolved project name (full name or a quorum of its
 significant tokens); only answers about an unrelated project fail it. Failed
