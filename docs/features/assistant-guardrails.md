@@ -15,8 +15,11 @@ knowledge.
 Answers generated for `needs_tools` are audited after generation. The answer
 must have authorized RAG or structured project evidence, cite retrieved RAG
 sources when applicable, remain tied to the resolved project, and avoid raw
-tool data or authorization details. Failed audits replace the answer with the
-same warm rejection template. That final answer is persisted.
+tool data or authorization details. The project-scope check tolerates natural
+paraphrase of the resolved project name (full name or a quorum of its
+significant tokens); only answers about an unrelated project fail it. Failed
+audits replace the answer with the same warm rejection template. That final
+answer is persisted.
 
 When every selected project tool returns `forbidden`, the agent falls back to
 a single deterministic `search_knowledge_base` call with the full user

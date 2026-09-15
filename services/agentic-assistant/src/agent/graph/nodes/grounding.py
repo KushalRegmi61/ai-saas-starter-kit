@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from agent.graph.nodes.routing import global_search_completed, project_access_denied
 from agent.graph.state import AgentState
@@ -123,7 +124,9 @@ def _audit_grounded_answer(
             for item in resolved_evidence
         ]
         project_names = [name.casefold() for name in project_names if name]
-        missing_project_name = not project_names or not any(name in answer for name in project_names)
+        missing_project_name = not project_names or not any(
+            _project_name_mentioned(name, answer) for name in project_names
+        )
         # Denied project access with global knowledge results is the
         # access-fallback path: the RAG chunks are the evidence, so the
         # resolved-project-name requirement does not apply. Citation is
@@ -138,3 +141,32 @@ def _audit_grounded_answer(
         return False, "missing_source_citation"
 
     return True, "passed"
+
+
+def _significant_tokens(text: str) -> list[str]:
+    """Lowercase alphanumeric tokens, dropping stubs of 1-2 characters."""
+    return [
+        part for part in re.sub(r"[^a-z0-9]+", " ", text.casefold()).split() if len(part) > 2
+    ]
+
+
+def _project_name_mentioned(project_name: str, answer: str) -> bool:
+    """Check the answer names the resolved project, tolerating paraphrase.
+
+    Resolved DB names ("workalaya internal knowledge assistant") rarely match
+    draft wording ("Workalaya Agentic Assistant") exactly. Accept the full
+    normalized name or a quorum of its significant tokens: all of them for
+    short names, at least half for longer ones. An answer about an unrelated
+    project shares no significant tokens and still fails.
+    """
+    name = project_name.casefold()
+    if name and name in answer:
+        return True
+    name_tokens = _significant_tokens(name)
+    if not name_tokens:
+        return False
+    answer_tokens = set(_significant_tokens(answer))
+    matched = sum(1 for token in name_tokens if token in answer_tokens)
+    if len(name_tokens) <= 2:
+        return matched == len(name_tokens)
+    return matched >= (len(name_tokens) + 1) // 2

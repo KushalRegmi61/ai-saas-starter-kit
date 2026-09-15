@@ -239,6 +239,71 @@ async def test_valid_project_answer_requires_resolved_project_name():
 
 
 @pytest.mark.asyncio
+async def test_project_scope_accepts_paraphrased_resolved_project_name():
+    """A cited draft that names the project naturally must not be replaced.
+
+    Regression: resolved DB name "workalaya internal knowledge assistant"
+    vs draft wording "Workalaya Agentic Assistant" — exact-substring
+    matching failed the audit and recovery claimed no updates existed.
+    """
+    from agent.types import ProjectToolEvidence
+
+    result = _result(
+        text="Today: implemented model routing.",
+        source="workalaya_agentic_assistant.md",
+    )
+    state = _state(
+        intent="needs_tools",
+        selected_tools=["get_project_activity", "search_project_knowledge"],
+        answer=(
+            "The Workalaya Agentic Assistant shipped model routing today. "
+            "See workalaya_agentic_assistant.md."
+        ),
+        results=[result],
+        sources=[{"source": "workalaya_agentic_assistant.md"}],
+        project_evidence=[
+            ProjectToolEvidence(
+                tool="get_project_activity",
+                status="resolved",
+                project_name="workalaya internal knowledge assistant",
+                result_count=3,
+            )
+        ],
+    )
+    output = await check_grounding(state)
+    assert output["grounded"] is True
+    assert output["answer"] == state["answer"]
+
+
+@pytest.mark.asyncio
+async def test_project_scope_still_rejects_answer_about_another_project(monkeypatch):
+    from agent.types import ProjectToolEvidence
+
+    result = _result(text="Today: implemented model routing.", source="updates.md")
+    state = _state(
+        intent="needs_tools",
+        selected_tools=["get_project_activity"],
+        answer="The FooBar Mobile project shipped billing. See updates.md.",
+        results=[result],
+        sources=[{"source": "updates.md"}],
+        project_evidence=[
+            ProjectToolEvidence(
+                tool="get_project_activity",
+                status="resolved",
+                project_name="workalaya internal knowledge assistant",
+                result_count=3,
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "agent.graph.nodes.grounding.invoke_recovery_response",
+        AsyncMock(return_value="I couldn't find enough accessible information to answer that."),
+    )
+    output = await check_grounding(state)
+    assert output["grounded"] is False
+
+
+@pytest.mark.asyncio
 async def test_answer_with_internal_data_is_replaced(monkeypatch):
     result = _result(text="The handbook says X.", source="handbook.pdf")
     state = _state(
